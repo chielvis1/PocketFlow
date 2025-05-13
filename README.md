@@ -28,6 +28,25 @@ Get started with Pocket Flow:
 - 🎉 Join our [Discord](https://discord.gg/hUHHE9Sa6T) to connect with other developers building with Pocket Flow!
 - 🎉 Pocket Flow is initially Python, but we now have [Typescript](https://github.com/The-Pocket/PocketFlow-Typescript), [Java](https://github.com/The-Pocket/PocketFlow-Java), [C++](https://github.com/The-Pocket/PocketFlow-CPP) and [Go](https://github.com/The-Pocket/PocketFlow-Go) versions!
 
+## Dynamic LLM Provider Selection
+
+Pocket Flow now supports dynamic LLM provider selection with a seamless workflow:
+
+1. **Choose your provider**: Select from Google Gemini, OpenAI, Anthropic Claude, or OpenRouter
+2. **Verify your API key**: Securely provide and verify your API credentials
+3. **Select from available models**: Choose from dynamically fetched models based on your provider
+4. **Seamless integration**: Unified interface for all providers with both standard and streaming modes
+
+Test it out with our demo script:
+```bash
+python test_dynamic_llm.py
+```
+
+Or specify providers and models directly:
+```bash
+python main.py "Your query" --provider openai --model gpt-4o
+```
+
 ## Why Pocket Flow?
 
 Current LLM frameworks are bloated... You only need 100 lines for LLM Framework!
