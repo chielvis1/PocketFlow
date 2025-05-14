@@ -178,12 +178,19 @@ class FilterSearchResultsNode(BatchNode):
         tech_stack = self.params.get("tech_stack", [])
         features = self.params.get("features", [])
         
-        # Check relevance using LLM
+        # Check relevance using our enhanced check_content_relevance
         relevance_data = check_content_relevance(
-            result, keywords, tech_stack, features, threshold=0.6
+            result, 
+            keywords=keywords, 
+            tech_stack=tech_stack, 
+            features=features, 
+            threshold=0.5
         )
         
-        return relevance_data
+        # Add relevance data to the result
+        result.update(relevance_data)
+        
+        return result
     
     def post(self, shared, prep_res, relevance_data_list):
         # Filter for relevant results
