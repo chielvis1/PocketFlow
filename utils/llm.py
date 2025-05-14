@@ -527,6 +527,58 @@ def setup_llm_provider() -> Tuple[str, str, str]:
     # Return the selected provider, API key, and model
     return provider, api_key, model
 
+def setup_llm_provider_with_params(provider=None, model=None, api_key=None) -> Tuple[str, str, str]:
+    """
+    Set up LLM provider with specified parameters, with minimal interactive prompting.
+    Will only prompt for values that are not provided.
+    
+    Args:
+        provider: The name of the LLM provider (e.g., 'openai', 'google', 'anthropic', 'openrouter')
+        model: The name of the model to use
+        api_key: The API key to use (if None, will look in environment or prompt user)
+        
+    Returns:
+        Tuple of (provider_name, api_key, model_name)
+    """
+    global _CURRENT_CONFIG
+    
+    # Step 1: Get provider (use provided, or prompt)
+    if not provider:
+        provider = choose_provider()
+    print(f"Using provider: {provider}")
+    
+    # Step 2: Get API key (use provided, environment, or prompt)
+    if not api_key:
+        api_key = get_api_key(provider)
+    if not api_key:
+        raise ValueError("API key is required")
+    
+    # Step 3: Verify API key
+    try:
+        verify_api_key(provider, api_key)
+    except Exception as e:
+        raise ValueError(f"API key verification failed: {str(e)}")
+    
+    # Step 4: Get model (use provided, or prompt from available models)
+    if not model:
+        try:
+            models = list_available_models(provider, api_key)
+            if not models:
+                raise ValueError(f"No models available for {provider}")
+            model = choose_model(models)
+        except Exception as e:
+            raise ValueError(f"Error selecting model: {str(e)}")
+    print(f"Using model: {model}")
+    
+    # Update configuration
+    _CURRENT_CONFIG = {
+        "provider": provider,
+        "api_key": api_key,
+        "model": model
+    }
+    
+    return provider, api_key, model
+
 def call_llm(prompt: str, model: Optional[str] = None, 
              provider: Optional[str] = None, api_key: Optional[str] = None,
              temperature: float = 0.7, max_tokens: Optional[int] = None) -> str:

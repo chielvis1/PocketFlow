@@ -704,7 +704,7 @@ from .monitoring import log_execution_time
 
 @lru_cache(maxsize=100)
 @log_execution_time("web_search")
-def search_web(query: str, max_results: int = 10) -> List[Dict[str, str]]:
+def search_web(query, max_results=10) -> List[Dict[str, str]]:
     """
     Searches the web for relevant content using Search-Engines-Scraper.
     
@@ -764,7 +764,7 @@ def extract_domain(url: str) -> str:
 
 @lru_cache(maxsize=50)
 @log_execution_time("youtube_search")
-def search_youtube(query: str, max_results: int = 5) -> List[Dict[str, str]]:
+def search_youtube(query, max_results=5) -> List[Dict[str, str]]:
     """
     Searches YouTube for relevant videos using yt-dlp.
     
@@ -828,3 +828,65 @@ def search_youtube(query: str, max_results: int = 5) -> List[Dict[str, str]]:
 def check_content_relevance(content, keywords, tech_stack, features, threshold=0.7):
     """Check the relevance of content against user requirements."""
     # Existing implementation... 
+
+def scrape_webpage(url: str, max_retries: int = 2) -> Dict[str, Any]:
+    """
+    Scrapes a webpage to extract content and GitHub URLs.
+    Focuses specifically on finding GitHub repository references.
+    Includes retry mechanism with fixed 5-second delay between retries for handling 403 errors.
+    
+    Args:
+        url: Webpage URL
+        max_retries: Maximum number of retry attempts
+        
+    Returns:
+        Dictionary with:
+        - title: Page title
+        - content: Main text content (limited to 5000 chars)
+        - links: List of link dictionaries with url and text
+        - github_urls: List of detected GitHub repository URLs
+        - code_blocks: Code blocks that might contain GitHub references
+        - scrape_failed: Boolean flag indicating if scraping failed after all retries
+    """
+    pass 
+
+def search_and_scrape(query: str, 
+                     keywords: List[str] = None, 
+                     tech_stack: List[str] = None,
+                     features: List[str] = None,
+                     youtube_count: int = 5, 
+                     web_count: int = 5,
+                     use_youtube: bool = True,
+                     use_web: bool = True,
+                     use_llm: bool = True) -> Dict[str, Any]:
+    """
+    Performs search and scrape process to find GitHub repositories.
+    Combines YouTube and web search, with scraping to extract GitHub URLs.
+    Includes error handling with retry mechanism and failure reporting.
+    
+    Args:
+        query: Search query
+        keywords: Keywords for relevance filtering
+        tech_stack: Technologies for relevance filtering
+        features: Features for relevance filtering
+        youtube_count: Number of YouTube videos to search
+        web_count: Number of web pages to search
+        use_youtube: Whether to include YouTube search
+        use_web: Whether to include web search
+        use_llm: Whether to use LLM enhancements
+        
+    Returns:
+        Dictionary with:
+        - query: Original search query
+        - refined_query: LLM-enhanced query (if use_llm=True)
+        - keywords, tech_stack, features: Filtering criteria
+        - youtube_results: List of relevant YouTube videos with GitHub URLs
+        - web_results: List of relevant web pages with GitHub URLs
+        - github_urls: Combined list of all unique GitHub repository URLs
+        - repos_with_quality: Repository quality assessments (if use_llm=True)
+        - total_github_urls: Count of unique GitHub URLs found
+        - llm_enhanced: Whether LLM enhancements were used
+        - average_relevance: Average relevance score of processed content
+        - scrape_success_rate: Percentage of successful scrape attempts
+    """
+    pass 

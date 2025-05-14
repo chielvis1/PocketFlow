@@ -12,9 +12,8 @@ The GitHub Repository Finder is an agent built using the PocketFlow framework th
 
 2. `/home/vboxuser/Documents/mnt/PocketFlow/utils/search.py`
    - The main module we've been modifying
-   - Handles web and YouTube searches using external libraries
-   - Provides methods to scrape content and extract GitHub URLs
-   - Includes functions for interactive user input and result display
+   - Handles web and YouTube searches, scraping, and GitHub URL extraction
+   - Includes the LLM-enhanced repository search and quality assessment
 
 3. `/home/vboxuser/Documents/mnt/PocketFlow/utils/github.py`
    - Contains utilities for extracting GitHub URLs from text content
@@ -22,13 +21,13 @@ The GitHub Repository Finder is an agent built using the PocketFlow framework th
    - Provides functionality to analyze repository contents
 
 4. `/home/vboxuser/Documents/mnt/PocketFlow/utils/llm.py`
-   - Handles communication with various LLM providers
-   - Provides utilities for prompt construction and response parsing
-   - Used throughout the system for text analysis and generation
+   - Provides the LLM utility functions
+   - Used for search query refinement, content relevance evaluation, and more
 
 5. `/home/vboxuser/Documents/mnt/PocketFlow/utils/monitoring.py`
    - Provides execution time logging for performance monitoring
    - Contains the `log_execution_time` decorator used in search functions
+   - Tracks success rates and performance metrics for scraping operations
 
 6. `/home/vboxuser/Documents/mnt/PocketFlow/utils/data_processing.py`
    - Handles data formatting and processing
@@ -40,12 +39,12 @@ The GitHub Repository Finder is an agent built using the PocketFlow framework th
    - Creates and manages MCP servers for repository analysis
 
 8. `/home/vboxuser/Documents/mnt/PocketFlow/nodes.py`
-   - Contains PocketFlow node definitions for the agent
-   - Implements nodes for query analysis, search, filtering, etc.
+   - Implements PocketFlow nodes specific to the repository finder
+   - Includes SearchWebNode, SearchYouTubeNode, ExtractGitHubReposNode, etc.
 
 9. `/home/vboxuser/Documents/mnt/PocketFlow/flow.py`
-   - Defines the flow connections between nodes
-   - Creates the overall agent workflow
+   - Defines the repository finder agent's workflow
+   - Connects nodes into a complete flow for finding GitHub repositories
 
 10. `/home/vboxuser/Documents/mnt/PocketFlow/main.py`
     - Entry point for the application
@@ -76,6 +75,75 @@ The GitHub Repository Finder is an agent built using the PocketFlow framework th
    - Extracts links, code blocks, and other content
    - Helps identify GitHub URLs in web content
 
+## Key Utility Functions in `search.py`
+
+### Search Functions
+- `search_web(query, max_results)`: Searches the web for information
+- `search_youtube(query, max_results)`: Searches YouTube for relevant videos
+- `search_and_scrape(query, ...)`: Combined search and scrape process
+
+### Scraping Functions
+- `scrape_webpage(url, max_retries)`: Scrapes content and extracts GitHub URLs from web pages
+  - Includes retry mechanism with fixed 5-second delays between retries
+  - Rotates through different user agents to reduce blocking
+  - Returns scrape_failed=True when all retries fail
+- `scrape_youtube_video(url)`: Extracts information from YouTube videos
+
+### GitHub URL Extraction
+- `extract_github_urls(text)`: Uses regex to extract GitHub repository URLs from text
+- `extract_github_urls_with_llm(text)`: Uses LLM to identify GitHub URLs in ambiguous cases
+
+### LLM-Enhanced Features
+- `refine_search_query(query, keywords, tech_stack, features)`: Improves search queries
+- `check_content_relevance_with_llm(content, query, keywords, tech_stack, features)`: Evaluates relevance
+- `assess_repository_quality(url, query, features)`: Evaluates repository quality
+
+## Repository Finder Agent Flow
+
+1. **Initial Query Processing**
+   - Takes user query with optional keywords, tech stack, and features
+   - Refines the query using LLM if enabled
+
+2. **Search Phase**
+   - Performs web search (Google, Bing, etc.)
+   - Performs YouTube search if enabled
+   - Filters results based on relevance to the query
+
+3. **Scraping Phase**
+   - Scrapes relevant web pages and YouTube videos
+   - Extracts GitHub URLs using regex and LLM-enhanced methods
+   - Handles scraping errors with retry mechanism (2 retries with 5-second delays)
+   - Reports failures and continues to next site when retries are exhausted
+
+4. **Repository Evaluation**
+   - Assesses repository quality if LLM is enabled
+   - Ranks repositories by relevance and quality
+
+5. **Result Presentation**
+   - Returns a structured dictionary with all findings
+   - Includes relevance scores, success metrics, and repository quality assessments
+   - Reports scrape failure statistics 
+
+## Key Design Characteristics
+
+- **Modular Architecture**: Separate nodes for each major function
+- **Error Handling**: Includes graceful retry and fallback mechanisms 
+- **LLM Enhancement**: Optional AI-powered features to improve results
+- **Flexible Configuration**: Supports various search configurations
+- **Stateful Processing**: Maintains context throughout the flow
+- **External Events**: User selection can influence the flow's path
+
+## Retry Mechanism for Web Scraping
+
+The system includes a robust retry mechanism for handling 403 Forbidden errors and other scraping failures:
+
+1. **User Agent Rotation**: Different user agents are tried on each retry attempt to bypass simple blocks
+2. **Fixed Delay**: 5-second fixed delay between retry attempts to avoid triggering rate limits
+3. **Failure Tracking**: The system tracks and reports scraping failures
+4. **Graceful Continuation**: If scraping fails for a site after all retries, the system skips to the next site
+
+This implementation ensures the agent can handle common scraping challenges while maintaining a good user experience.
+
 ## Data Flow and Process
 
 ### 1. User Input Phase
@@ -105,6 +173,7 @@ The GitHub Repository Finder is an agent built using the PocketFlow framework th
   - Matching tech stack (20% weight)
   - Matching keywords (10% weight)
 - Filters out low-relevance content
+- Tracks average relevance scores for reporting
 
 ### 4. Content Scraping
 - For relevant YouTube videos:
@@ -113,6 +182,10 @@ The GitHub Repository Finder is an agent built using the PocketFlow framework th
 
 - For relevant web pages:
   - Scrapes HTML content using requests and BeautifulSoup
+  - Implements retry mechanism with 5-second delays between attempts
+  - Handles 403 errors and other access restrictions gracefully
+  - Rotates user agents to reduce blocking frequency
+  - If final site cannot be scraped, generates LLM-based suggestions
   - Extracts links, code blocks, and GitHub URLs
   - Analyzes content for repository references
 
@@ -120,6 +193,7 @@ The GitHub Repository Finder is an agent built using the PocketFlow framework th
 - Displays YouTube results with GitHub URLs
 - Displays web page results with GitHub URLs
 - Shows total unique GitHub repositories found
+- Reports scraping success rate and average relevance scores
 - Lists all extracted GitHub URLs
 
 ## PocketFlow Pattern Implementation
@@ -145,6 +219,7 @@ The system follows these PocketFlow patterns:
 5. **Utility Functions**:
    - External tools (yt-dlp, Search-Engines-Scraper) are wrapped as utilities
    - Clear separation between core logic and external tool integration
+   - Robust error handling and retry mechanisms for reliability
 
 ## Future Enhancements
 
@@ -163,6 +238,10 @@ The system follows these PocketFlow patterns:
 4. **User Feedback**:
    - Adding user feedback loops for repository selection
    - Fine-tuning search based on user preferences
+
+5. **Error Handling Enhancements**:
+   - Add proxy support for sites that consistently block access
+   - Further improve fallback content generation for blocked sites
 
 ## Detailed Flow Implementation
 
@@ -253,4 +332,5 @@ The flow follows a dynamic, adaptable execution pattern:
 - Each node returns an "action" string from its `post()` method
 - The action determines which node gets executed next
 - Default transitions are provided for nodes that don't return specific actions
-- External events (like user selection) can influence the flow's path 
+- External events (like user selection) can influence the flow's path
+- Error handling includes graceful retry and fallback mechanisms 

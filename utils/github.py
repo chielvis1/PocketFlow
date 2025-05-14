@@ -13,6 +13,29 @@ from urllib.parse import urlparse
 
 from .monitoring import log_execution_time
 
+# Module-level token store
+_GITHUB_TOKEN_STORE = {
+    "token": os.environ.get("GITHUB_TOKEN")
+}
+
+def set_github_token(token: str) -> None:
+    """
+    Set GitHub token for the current session.
+    
+    Args:
+        token: GitHub personal access token
+    """
+    _GITHUB_TOKEN_STORE["token"] = token
+    
+def get_github_token() -> Optional[str]:
+    """
+    Get the currently set GitHub token.
+    
+    Returns:
+        Current GitHub token or None if not set
+    """
+    return _GITHUB_TOKEN_STORE.get("token")
+
 def extract_github_urls(content: Union[str, Dict[str, Any]]) -> List[str]:
     """
     Extracts GitHub repository URLs from text or structured content.
@@ -71,6 +94,9 @@ def check_repository_complexity_and_size(repo_url: str, min_stars: int = 10) -> 
     Returns:
         Repository quality and size metrics
     """
+    # Ensure GitHub token is available
+    ensure_github_token()
+    
     # Extract username and repo name from URL
     parsed_url = urlparse(repo_url)
     path_parts = parsed_url.path.strip('/').split('/')
@@ -85,7 +111,8 @@ def check_repository_complexity_and_size(repo_url: str, min_stars: int = 10) -> 
     except ImportError:
         raise ImportError("Please install requests: pip install requests")
     
-    github_token = os.environ.get("GITHUB_TOKEN")
+    # Get GitHub token from session store
+    github_token = get_github_token()
     
     # Set up headers with token if available
     headers = {}
@@ -191,6 +218,9 @@ def analyze_repository(repo_url: str) -> Dict[str, Any]:
     Returns:
         Comprehensive repository data
     """
+    # Ensure GitHub token is available
+    ensure_github_token()
+    
     # Extract username and repo name from URL
     parsed_url = urlparse(repo_url)
     path_parts = parsed_url.path.strip('/').split('/')
@@ -205,7 +235,8 @@ def analyze_repository(repo_url: str) -> Dict[str, Any]:
     except ImportError:
         raise ImportError("Please install requests: pip install requests")
     
-    github_token = os.environ.get("GITHUB_TOKEN")
+    # Get GitHub token from session store
+    github_token = get_github_token()
     
     # Set up headers with token if available
     headers = {}
@@ -324,6 +355,29 @@ def analyze_repository(repo_url: str) -> Dict[str, Any]:
     }
     
     return repository_data
+
+def ensure_github_token() -> str:
+    """
+    Ensures a GitHub token is available, prompting the user if necessary.
+    
+    Returns:
+        GitHub token
+    """
+    token = get_github_token()
+    if not token:
+        print("\nA GitHub personal access token is required for repository analysis.")
+        print("This helps avoid rate limits and allows access to private repositories.")
+        print("Create one at: https://github.com/settings/tokens")
+        print("You need at least 'repo' scope for most operations.")
+        
+        token = input("\nEnter your GitHub token: ")
+        if token:
+            set_github_token(token)
+            print("GitHub token set for this session.")
+        else:
+            print("No token provided. Some operations may be rate-limited.")
+    
+    return token
 
 if __name__ == "__main__":
     # Test extracting GitHub URLs

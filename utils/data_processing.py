@@ -253,6 +253,194 @@ def get_user_selection(prompt: str, options: List[Any]) -> Optional[Any]:
         except ValueError:
             print("Please enter a valid number.")
 
+def combine_search_results(web_results: List[Dict], youtube_results: List[Dict]) -> Dict[str, Any]:
+    """
+    Combines search results from web and YouTube searches.
+    
+    Args:
+        web_results: Results from web search
+        youtube_results: Results from YouTube search
+        
+    Returns:
+        Combined search results
+    """
+    # Extract GitHub URLs from all results
+    github_urls = []
+    
+    # Process web results
+    for result in web_results:
+        # Extract GitHub URLs from title and snippet
+        text_to_check = f"{result.get('title', '')} {result.get('snippet', '')}"
+        urls = extract_github_urls(text_to_check)
+        github_urls.extend(urls)
+    
+    # Process YouTube results
+    for result in youtube_results:
+        # Extract GitHub URLs from title, description and existing github_urls
+        text_to_check = f"{result.get('title', '')} {result.get('snippet', '')}"
+        urls = extract_github_urls(text_to_check)
+        github_urls.extend(urls)
+        
+        # Add any URLs already extracted during YouTube search
+        if 'github_urls' in result:
+            github_urls.extend(result['github_urls'])
+    
+    # Deduplicate URLs
+    unique_urls = list(set(github_urls))
+    
+    return {
+        "web_results": web_results,
+        "youtube_results": youtube_results,
+        "github_urls": unique_urls
+    }
+
+def extract_keywords_from_query(query: str) -> List[str]:
+    """
+    Extracts keywords from the user's query.
+    
+    Args:
+        query: User's query
+        
+    Returns:
+        List of keywords
+    """
+    # This is a simplified version - in production, use call_llm to extract keywords
+    # Split query into words, filter out common stopwords
+    stopwords = set(["a", "an", "the", "in", "on", "at", "for", "with", "by", "to", "of"])
+    words = [word.lower() for word in query.split() if word.lower() not in stopwords]
+    
+    # Return unique words with length > 3 as keywords
+    return list(set([word for word in words if len(word) > 3]))
+
+def extract_tech_stack_from_query(query: str) -> List[str]:
+    """
+    Extracts technology stack mentions from the user's query.
+    
+    Args:
+        query: User's query
+        
+    Returns:
+        List of technologies
+    """
+    # Common technology stacks to look for
+    tech_keywords = [
+        "python", "javascript", "typescript", "react", "vue", "angular", "node", "nodejs",
+        "django", "flask", "express", "fastapi", "spring", "java", "kotlin", "swift",
+        "c#", "dotnet", ".net", "go", "golang", "rust", "ruby", "rails", "php", "laravel",
+        "html", "css", "mongodb", "postgresql", "mysql", "sql", "nosql", "firebase", 
+        "aws", "azure", "gcp", "docker", "kubernetes", "terraform", "graphql", "rest"
+    ]
+    
+    # Case-insensitive search for tech keywords
+    query_lower = query.lower()
+    found_tech = []
+    
+    for tech in tech_keywords:
+        if tech in query_lower:
+            found_tech.append(tech)
+    
+    return found_tech
+
+def extract_features_from_query(query: str) -> List[str]:
+    """
+    Extracts feature requirements from the user's query.
+    
+    Args:
+        query: User's query
+        
+    Returns:
+        List of features
+    """
+    # This is a simplified version - in production, use call_llm to extract features
+    # Common feature keywords to look for
+    feature_keywords = {
+        "authentication": ["auth", "login", "signin", "signup", "register", "password"],
+        "authorization": ["permission", "role", "access control", "rbac"],
+        "payment": ["payment", "stripe", "paypal", "checkout", "billing"],
+        "search": ["search", "filter", "find", "query"],
+        "notifications": ["notification", "alert", "message", "email"],
+        "user management": ["user", "profile", "account"],
+        "file upload": ["upload", "file", "image", "video", "media"],
+        "analytics": ["analytics", "dashboard", "metrics", "statistics"],
+        "api": ["api", "endpoint", "rest", "graphql"],
+        "database": ["database", "db", "storage", "persist"]
+    }
+    
+    # Case-insensitive search for feature keywords
+    query_lower = query.lower()
+    found_features = []
+    
+    for feature, keywords in feature_keywords.items():
+        for keyword in keywords:
+            if keyword in query_lower:
+                found_features.append(feature)
+                break
+    
+    return found_features
+
+def format_repositories_for_display(repositories: List[Dict[str, Any]]) -> str:
+    """
+    Formats a list of repositories for display to the user.
+    
+    Args:
+        repositories: List of repository data
+        
+    Returns:
+        Formatted string for display
+    """
+    if not repositories:
+        return "No repositories found."
+    
+    formatted_output = "Found repositories:\n\n"
+    
+    for i, repo in enumerate(repositories):
+        # Extract basic information
+        if isinstance(repo, dict):
+            name = repo.get("name", "Unknown")
+            url = repo.get("url", "")
+            description = repo.get("description", "No description available")
+            stars = repo.get("stars", 0)
+            
+            # Additional metrics if available
+            relevance = repo.get("relevance_score", "N/A")
+            quality = repo.get("quality_score", "N/A")
+            
+            # Format repository information
+            formatted_output += f"{i+1}. {name}\n"
+            formatted_output += f"   URL: {url}\n"
+            formatted_output += f"   Description: {description}\n"
+            formatted_output += f"   Stars: {stars}\n"
+            
+            if relevance != "N/A":
+                formatted_output += f"   Relevance: {relevance:.2f}/1.0\n"
+            if quality != "N/A":
+                formatted_output += f"   Quality: {quality:.2f}/1.0\n"
+            
+            # Add a spacer
+            formatted_output += "\n"
+        else:
+            formatted_output += f"{i+1}. {str(repo)}\n\n"
+    
+    return formatted_output
+
+def generate_selection_prompt(repositories: List[Dict[str, Any]]) -> str:
+    """
+    Generates a prompt for repository selection.
+    
+    Args:
+        repositories: List of repository data
+        
+    Returns:
+        Selection prompt
+    """
+    if not repositories:
+        return "No repositories available for selection."
+    
+    return "Please select a repository to analyze:"
+
+# Add an import for extract_github_urls for the combine_search_results function
+from .github import extract_github_urls
+
 if __name__ == "__main__":
     # Test format_repository_list
     sample_repos = [

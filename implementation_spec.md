@@ -29,6 +29,8 @@ The replacement implementation will:
 1. **Maintain the same interface** (function signatures, return types)
 2. **Preserve the fallback mechanism** for when libraries aren't installed
 3. **Keep the same response structure** for compatibility with existing nodes
+4. **Add robust error handling** for common scraping errors like 403 Forbidden
+5. **Implement retry mechanisms** with fixed 5-second delays between attempts
 
 ### Modifications to Utility Functions
 
@@ -311,33 +313,87 @@ Using Search-Engines-Scraper, we can implement a more sophisticated approach:
        return all_repos[:max_results]
    ```
 
-2. **Two-Level Page Scraping**:
+2. **Two-Level Page Scraping with Retry Mechanism**:
    - First level: Extract GitHub links directly from search results
    - Second level: Follow promising links to scrape for more repositories
+   - Implement retry mechanism with 5-second delays
 
    ```python
-   def extract_repos_from_page(url, timeout=5):
-       """Extract GitHub repositories from a web page using BeautifulSoup"""
+   def extract_repos_from_page(url, max_retries=2):
+       """Extract GitHub repositories from a web page using BeautifulSoup with retry mechanism"""
        try:
            import requests
            from bs4 import BeautifulSoup
+           import time
            
-           response = requests.get(url, timeout=timeout)
-           if response.status_code == 200:
-               soup = BeautifulSoup(response.text, 'html.parser')
-               
-               # Extract all links
-               links = [a.get('href') for a in soup.find_all('a', href=True)]
-               
-               # Filter for GitHub repository links
-               github_repos = [link for link in links if is_github_repo_url(link)]
-               
-               return github_repos
-               
+           # User agents to rotate through
+           user_agents = [
+               'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+               'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Safari/605.1.15',
+               'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36'
+           ]
+           
+           for attempt in range(max_retries + 1):
+               try:
+                   # Use different user agent on each try
+                   headers = {
+                       'User-Agent': user_agents[attempt % len(user_agents)],
+                       'Accept': 'text/html,application/xhtml+xml,application/xml',
+                       'Accept-Language': 'en-US,en;q=0.9',
+                       'Referer': 'https://www.google.com/'
+                   }
+                   
+                   # Log retry attempt
+                   if attempt > 0:
+                       print(f"Retry attempt {attempt}/{max_retries} for {url}")
+                   
+                   # Make the request
+                   response = requests.get(url, headers=headers, timeout=10)
+                   response.raise_for_status()
+                   
+                   # Parse content
+                   soup = BeautifulSoup(response.text, 'html.parser')
+                   
+                   # Extract all links
+                   links = [a.get('href') for a in soup.find_all('a', href=True)]
+                   
+                   # Filter for GitHub repository links
+                   github_repos = [link for link in links if is_github_repo_url(link)]
+                   
+                   return github_repos
+                   
+               except requests.exceptions.HTTPError as e:
+                   status_code = e.response.status_code if hasattr(e, 'response') else 0
+                   
+                   if status_code == 403:
+                       print(f"Received 403 Forbidden error from {url}")
+                   else:
+                       print(f"HTTP error when scraping {url}: {str(e)}")
+                   
+                   # If we've exhausted retries, return empty list
+                   if attempt == max_retries:
+                       return []
+                   
+                   # Wait 5 seconds before retry
+                   print(f"Waiting 5 seconds before retry...")
+                   time.sleep(5)
+                   
+               except Exception as e:
+                   print(f"Error extracting repos from {url}: {str(e)}")
+                   
+                   # If we've exhausted retries, return empty list
+                   if attempt == max_retries:
+                       return []
+                   
+                   # Wait 5 seconds before retry
+                   print(f"Waiting 5 seconds before retry...")
+                   time.sleep(5)
+           
+           # If we get here, all retries failed
            return []
-           
-       except Exception as e:
-           print(f"Error extracting repos from {url}: {str(e)}")
+               
+       except ImportError as e:
+           print(f"Required library not installed: {str(e)}")
            return []
    ```
 
@@ -358,163 +414,118 @@ Using Search-Engines-Scraper, we can implement a more sophisticated approach:
        return bool(re.match(pattern, url))
    ```
 
-### 3. Integration with `ExtractGitHubReposNode`
+### 3. Scraping Retry Mechanism
 
-The enhanced repository extraction can work directly with the existing node:
-
-1. **Option 1: Embedded Integration**:
-   - Include repository extraction directly in `search_youtube` and `search_web`
-   - Add extracted repositories to the description/snippet fields
-
-2. **Option 2: Pre-extraction**:
-   - Create a new utility function that's called from within `search_youtube` and `search_web`
-   - Include extracted repositories in a new field that `ExtractGitHubReposNode` can check
-
-These enhancements will provide significantly better GitHub repository discovery without requiring changes to the existing node structure.
-
-## Error Handling and Reliability
-
-Each tool requires specific error handling approaches:
-
-### 1. yt-dlp Error Handling
+The scraping functionality includes a retry mechanism that handles 403 Forbidden errors and other scraping failures:
 
 ```python
-def safe_youtube_search(query, max_results=5):
-    """Robust error handling for yt-dlp"""
-    try:
-        import yt_dlp
-        from time import sleep
-        from random import uniform
-        
-        # Basic exponential backoff implementation
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                # Configure yt-dlp
-                ydl_opts = {
-                    'quiet': True,
-                    'extract_flat': True,
-                    'force_generic_extractor': True,
-                    'ignoreerrors': True,
-                    'no_warnings': True
-                }
+def scrape_webpage(url, max_retries=2):
+    """
+    Scrape a webpage with retry mechanism for handling 403 errors and other failures
+    """
+    # User agents to rotate through
+    user_agents = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Safari/605.1.15',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36'
+    ]
+    
+    # Initialize with scrape_failed=True until proven otherwise
+    page_data = {
+        "scrape_failed": True,
+        # Other default fields...
+    }
+    
+    for attempt in range(max_retries + 1):
+        try:
+            # Select user agent based on attempt number
+            headers = {
+                'User-Agent': user_agents[attempt % len(user_agents)]
+                # Other headers...
+            }
+            
+            # Add 5-second delay between retries
+            if attempt > 0:
+                print(f"Retry attempt {attempt}/{max_retries} for {url}")
+                print("Waiting 5 seconds before retry...")
+                time.sleep(5)  # Fixed 5-second delay between retries
+            
+            # Make the request, parse, and extract content
+            # ...
+            
+            # Mark as successful
+            page_data["scrape_failed"] = False
+            return page_data
+            
+        except requests.exceptions.HTTPError as e:
+            # Handle HTTP errors (including 403 Forbidden)
+            # Continue retry loop unless max_retries reached
+            if attempt == max_retries:
+                return page_data
                 
-                # Add random delay to avoid rate limiting
-                if attempt > 0:
-                    delay = uniform(2 ** attempt, 2 ** (attempt + 1))
-                    print(f"Retrying YouTube search after {delay:.2f}s delay (attempt {attempt+1}/{max_retries})")
-                    sleep(delay)
-                
-                # Perform search
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    search_results = ydl.extract_info(f"ytsearch{max_results}:{query}", download=False)
-                    # Process results...
-                    return processed_results
-                    
-            except yt_dlp.utils.DownloadError as e:
-                if "HTTP Error 429" in str(e) and attempt < max_retries - 1:
-                    # Rate limited, will retry with backoff
-                    continue
-                else:
-                    # Other error or final retry failed
-                    print(f"YouTube search error: {str(e)}")
-                    return _mock_search_youtube(query, max_results)
-                    
-    except ImportError:
-        return _mock_search_youtube(query, max_results)
+        except Exception as e:
+            # Handle other exceptions
+            # Continue retry loop unless max_retries reached
+            if attempt == max_retries:
+                return page_data
+    
+    # If all retries fail, return with scrape_failed=True
+    return page_data
 ```
 
-### 2. Search-Engines-Scraper Error Handling
+The search_and_scrape function tracks scraping failures and proceeds to the next site in the list if a scrape fails:
 
 ```python
-def safe_web_search(query, max_results=10):
-    """Robust error handling for Search-Engines-Scraper"""
-    try:
-        from search_engines import Google, Bing, Duckduckgo
-        import time
+def search_and_scrape(query, *args, **kwargs):
+    # ...
+    
+    scrape_failure_count = 0
+    total_scrape_attempts = 0
+    
+    # Process search results...
+    for i, page in enumerate(pages):
+        # ...
         
-        # List of engines with fallbacks
-        primary_engines = [Google(), Bing(), Duckduckgo()]
-        fallback_engines = [Yahoo()]  # Use different engines as fallbacks
+        total_scrape_attempts += 1
+        page_data = scrape_webpage(page['url'])
         
-        processed_results = []
+        # Check if scraping failed
+        if page_data.get('scrape_failed', False):
+            scrape_failure_count += 1
+            print(f"Scraping failed for {page['url']} - skipping to next page")
+            continue
         
-        # Try primary engines first
-        for engine in primary_engines:
-            try:
-                # Configure and run search
-                engine.pages = 1
-                
-                # Random delay between engine searches (0.5-1.5s)
-                time.sleep(0.5 + time.random())
-                
-                results = engine.search(query)
-                # Process results...
-                
-                # If we got enough results, return them
-                if len(processed_results) >= max_results:
-                    return processed_results[:max_results]
-                    
-            except Exception as e:
-                print(f"Error with {engine.__class__.__name__}: {str(e)}")
-                continue
-        
-        # If we didn't get enough results, try fallback engines
-        if len(processed_results) < max_results:
-            for engine in fallback_engines:
-                try:
-                    # Configure and run search
-                    engine.pages = 1
-                    
-                    # Longer delay for fallbacks to avoid detection (1-2s)
-                    time.sleep(1 + time.random())
-                    
-                    results = engine.search(query)
-                    # Process results...
-                    
-                    # If we got enough results, return them
-                    if len(processed_results) >= max_results:
-                        return processed_results[:max_results]
-                        
-                except Exception as e:
-                    print(f"Error with fallback {engine.__class__.__name__}: {str(e)}")
-                    continue
-        
-        # Return whatever results we managed to get
-        return processed_results
-        
-    except ImportError:
-        return _mock_search_web(query, max_results)
+        # Continue processing if scraping succeeded...
+    
+    # Report results including failure statistics
+    print(f"Search complete. Found {len(unique_github_urls)} unique GitHub repositories.")
+    if scrape_failure_count > 0:
+        print(f"Scraping failed for {scrape_failure_count} out of {total_scrape_attempts} pages/videos.")
+    
+    # Return comprehensive results...
 ```
 
-### 3. Proxy Support for Avoiding IP Blocks
+### 4. User Agent Rotation
 
-Both tools support proxies, which can be critical for production use:
+To avoid being blocked by websites like Stack Overflow that might return 403 errors:
 
 ```python
-def configure_proxy(tool_name):
-    """Configure proxy settings for different tools"""
-    import os
+def get_random_user_agent(index=None):
+    """Get a user agent from a predefined list, optionally by index"""
+    user_agents = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Safari/605.1.15',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:90.0) Gecko/20100101 Firefox/90.0',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36',
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1'
+    ]
+    
+    if index is not None:
+        return user_agents[index % len(user_agents)]
+    
     import random
-    
-    # Get proxy settings from environment variables
-    proxy_list = os.environ.get("PROXY_LIST", "").split(",")
-    
-    if not proxy_list or proxy_list[0] == "":
-        return None
-        
-    # Randomly select a proxy from the list
-    proxy = random.choice(proxy_list).strip()
-    
-    if tool_name == "yt-dlp":
-        return {
-            'http_proxy': proxy,
-            'https_proxy': proxy
-        }
-    elif tool_name == "search-engines":
-        return proxy
-    
-    return None
+    return random.choice(user_agents)
 ```
 
 ## Test Cases
@@ -532,9 +543,16 @@ Create test cases to verify:
 3. **Fallback Tests**:
    - Test behavior when dependencies are missing
    - Test behavior when search requests fail
+   
+4. **Error Handling Tests**:
+   - Test behavior with simulated 403 responses
+   - Verify retry mechanism with 5-second delays
+   - Test fallback content generation for the last site
 
 ## Conclusion
 
 This implementation carefully replaces SerpAPI with two specialized tools while maintaining backward compatibility with the existing PocketFlow workflow. The changes are focused on the utility functions in `utils/search.py` and do not require modifications to the node implementations or flow structure.
 
-By maintaining the same interface and behavior while enhancing the underlying implementation, we ensure a seamless transition from SerpAPI to the new tools. The advanced GitHub repository extraction capabilities will significantly improve the system's ability to discover relevant repositories without requiring structural changes to the codebase. 
+By maintaining the same interface and behavior while enhancing the underlying implementation, we ensure a seamless transition from SerpAPI to the new tools. The advanced GitHub repository extraction capabilities will significantly improve the system's ability to discover relevant repositories without requiring structural changes to the codebase.
+
+The added error handling mechanisms, particularly for 403 Forbidden responses, with fixed 5-second delays between retries, make the system more resilient against common web scraping challenges. This ensures a more reliable user experience even when faced with websites that implement scraping protections. 

@@ -1,583 +1,478 @@
 """
-Node definitions for Repository Analysis to MCP Server agent.
+Node definitions for Repository Analysis.
 
-This file contains all the nodes used in the agent flow, which analyzes
-GitHub repositories and creates an MCP server based on the analysis.
+This file contains the nodes used in the repository analysis flow.
 """
 
-from pocketflow import Node, BatchNode
-from typing import Dict, List, Any, Optional, Union
+from pocketflow import Node
+from typing import Dict, Any, Optional, Tuple, List, Union
+from urllib.parse import urlparse
 
-from utils.llm import call_llm, extract_keywords_and_techstack, analyze_repository_with_llm
-from utils.search import search_web, search_youtube, check_content_relevance
-from utils.github import extract_github_urls, check_repository_complexity_and_size, analyze_repository
-from utils.data_processing import format_for_mcp, generate_implementation_guides_from_analysis, format_repository_list, get_user_selection
-from utils.mcp import create_mcp_server, start_mcp_server
-from utils.monitoring import log_execution_time
-
-class QueryAnalysisNode(Node):
-    """Analyzes the user's query to extract keywords, tech stack, and features."""
-    
+class ParseRepositoryURLNode(Node):
+    """
+    Node to parse and validate a GitHub repository URL.
+    """
     def prep(self, shared):
-        # Get user query and LLM configuration
-        query = shared.get("user_query", "")
-        llm_config = shared.get("llm_config", {})
-        return query, llm_config
-    
-    def exec(self, inputs):
-        query, llm_config = inputs
-        
-        if not query:
-            return {
-                "original_query": "",
-                "keywords": [],
-                "tech_stack": [],
-                "features": [],
-                "context": ""
-            }
-        
-        # Use LLM configuration if provided
-        provider = llm_config.get("provider")
-        model = llm_config.get("model")
-        
-        return extract_keywords_and_techstack(
-            query=query,
-            model=model,
-            provider=provider
-        )
-    
-    def post(self, shared, prep_res, exec_res):
-        shared["query_analysis"] = exec_res
-        shared["keywords"] = exec_res.get("keywords", [])
-        shared["tech_stack"] = exec_res.get("tech_stack", [])
-        shared["features"] = exec_res.get("features", [])
-        
-        # Determine next action based on analysis quality
-        if not exec_res.get("keywords") and not exec_res.get("features"):
-            return "clarify"  # Need to clarify with the user
-        return "search"  # Continue to search
-
-class ClarifyQueryNode(Node):
-    """Ask the user to clarify their query if the initial analysis was insufficient."""
-    
-    def prep(self, shared):
-        return shared.get("query_analysis", {})
-    
-    def exec(self, query_analysis):
-        original_query = query_analysis.get("original_query", "")
-        
-        prompt = f"""
-The query "{original_query}" doesn't provide enough information to find relevant repositories.
-
-Please help me understand:
-1. What specific features are you looking to implement?
-2. What technologies or programming languages will you be using?
-3. What is the goal or purpose of your project?
-
-Please provide these details so I can find the most helpful repositories.
-"""
-        return prompt
-    
-    def post(self, shared, prep_res, exec_res):
-        # Store the clarification prompt
-        shared["clarification_prompt"] = exec_res
-        return "default"  # Waits for user's clarified response
-
-class SearchWebNode(Node):
-    """Searches the web for repositories based on the query analysis."""
-    
-    def prep(self, shared):
-        keywords = shared.get("keywords", [])
-        tech_stack = shared.get("tech_stack", [])
-        features = shared.get("features", [])
-        
-        # Construct an effective search query
-        search_terms = []
-        
-        # Add specific features
-        if features:
-            search_terms.extend(features[:2])  # Include top 2 features
-        
-        # Add technologies
-        if tech_stack:
-            search_terms.extend(tech_stack[:2])  # Include top 2 technologies
-        
-        # Add general keywords
-        if keywords:
-            search_terms.extend(keywords[:2])  # Include top 2 keywords
-        
-        # Add 'GitHub repository' to focus on repositories
-        search_terms.append("GitHub repository")
-        
-        # Join into a search query
-        search_query = " ".join(search_terms)
-        
-        return search_query
-    
-    def exec(self, search_query):
-        # Search the web
-        return search_web(search_query, max_results=15)
-    
-    def post(self, shared, prep_res, exec_res):
-        # Store the search results
-        shared["web_search_results"] = exec_res
-        
-        # Determine next steps based on search results
-        if not exec_res:
-            return "youtube_search"  # Try YouTube if web search has no results
-        return "filter_results"  # Continue to filter results
-
-class SearchYouTubeNode(Node):
-    """Searches YouTube for tutorials and videos about the repositories."""
-    
-    def prep(self, shared):
-        keywords = shared.get("keywords", [])
-        tech_stack = shared.get("tech_stack", [])
-        features = shared.get("features", [])
-        
-        # Construct a search query
-        search_terms = []
-        
-        if features:
-            search_terms.append(features[0])  # Top feature
-        
-        if tech_stack:
-            search_terms.append(tech_stack[0])  # Top technology
-        
-        if keywords:
-            search_terms.append(keywords[0])  # Top keyword
-        
-        # Add 'tutorial repository' to focus on tutorial videos
-        search_terms.append("tutorial repository")
-        
-        # Join into a search query
-        search_query = " ".join(search_terms)
-        
-        return search_query
-    
-    def exec(self, search_query):
-        return search_youtube(search_query, max_results=5)
-    
-    def post(self, shared, prep_res, exec_res):
-        # Store the YouTube results
-        shared["youtube_results"] = exec_res
-        return "extract_repos"  # Extract repos from all search results
-
-class FilterSearchResultsNode(BatchNode):
-    """Filters search results for relevance to user's requirements."""
-    
-    def prep(self, shared):
-        results = shared.get("web_search_results", [])
-        if not results:
-            return []
-        
-        return results
-    
-    def exec(self, result):
-        keywords = self.params.get("keywords", [])
-        tech_stack = self.params.get("tech_stack", [])
-        features = self.params.get("features", [])
-        
-        # Check relevance using our enhanced check_content_relevance
-        relevance_data = check_content_relevance(
-            result, 
-            keywords=keywords, 
-            tech_stack=tech_stack, 
-            features=features, 
-            threshold=0.5
-        )
-        
-        # Add relevance data to the result
-        result.update(relevance_data)
-        
-        return result
-    
-    def post(self, shared, prep_res, relevance_data_list):
-        # Filter for relevant results
-        relevant_results = [result for result in relevance_data_list if result.get("is_relevant", False)]
-        
-        # Store filtered results
-        shared["relevant_results"] = relevant_results
-        
-        return "extract_repos"
-
-class ExtractGitHubReposNode(Node):
-    """Extracts GitHub repository URLs from search results."""
-    
-    def prep(self, shared):
-        # Combine all available search results
-        all_results = []
-        
-        # Add web search results
-        web_results = shared.get("relevant_results") or shared.get("web_search_results", [])
-        all_results.extend(web_results)
-        
-        # Add YouTube results
-        youtube_results = shared.get("youtube_results", [])
-        all_results.extend(youtube_results)
-        
-        return all_results
-    
-    def exec(self, all_results):
-        # Extract GitHub URLs from all results
-        all_urls = []
-        
-        for result in all_results:
-            # Extract from title and snippet/description
-            text_to_check = ""
-            
-            if isinstance(result, dict):
-                for field in ["title", "snippet", "description"]:
-                    if field in result and result[field]:
-                        text_to_check += " " + result[field]
-            
-            # Extract GitHub URLs
-            urls = extract_github_urls(text_to_check)
-            all_urls.extend(urls)
-        
-        # Deduplicate URLs
-        unique_urls = list(set(all_urls))
-        
-        return unique_urls
-    
-    def post(self, shared, prep_res, exec_res):
-        # Store the repository URLs
-        shared["repository_urls"] = exec_res
-        
-        if not exec_res:
-            return "no_repos_found"  # No repositories found
-        
-        return "check_repos"  # Continue to check repositories
-
-class CheckRepositoriesNode(BatchNode):
-    """Checks the quality and complexity of repositories."""
-    
-    def prep(self, shared):
-        return shared.get("repository_urls", [])
+        """Get repository URL from shared data."""
+        return shared.get("repo_url")
     
     def exec(self, repo_url):
-        # Check repository complexity and quality
-        return check_repository_complexity_and_size(repo_url)
-    
-    def post(self, shared, prep_res, exec_res_list):
-        # Pair URLs with complexity data
-        repo_data = []
+        """Validate GitHub repository URL."""
+        if not repo_url:
+            return None
+            
+        from urllib.parse import urlparse
+        parsed_url = urlparse(repo_url)
         
-        for i, url in enumerate(prep_res):
-            if i < len(exec_res_list):
-                repo_data.append({
-                    "url": url,
-                    **exec_res_list[i]
-                })
-        
-        # Filter for repositories that meet quality criteria
-        quality_repos = [repo for repo in repo_data if repo.get("meets_criteria", False)]
-        
-        # Store repository data
-        shared["repository_quality_data"] = repo_data
-        shared["quality_repositories"] = quality_repos
-        
-        if not quality_repos:
-            return "no_quality_repos"  # No quality repositories found
-        
-        return "display_repos"  # Display repositories to the user
-
-class NoReposFoundNode(Node):
-    """Handles the case when no repositories are found."""
-    
-    def exec(self, _):
-        return "No GitHub repositories were found in the search results. Let's refine your query to find relevant repositories."
-    
-    def post(self, shared, prep_res, exec_res):
-        shared["error_message"] = exec_res
-        return "clarify"  # Go back to clarify the query
-
-class NoQualityReposNode(Node):
-    """Handles the case when no quality repositories are found."""
-    
-    def prep(self, shared):
-        return shared.get("repository_quality_data", [])
-    
-    def exec(self, repo_data):
-        if not repo_data:
-            return "No repositories were found that match your requirements."
-        
-        return "Found repositories, but none meet the quality criteria. Consider refining your search or adjusting your requirements."
-    
-    def post(self, shared, prep_res, exec_res):
-        shared["error_message"] = exec_res
-        return "display_all_repos"  # Display all repos, even low quality ones
-
-class DisplayRepositoriesNode(Node):
-    """Displays repositories to the user for selection."""
-    
-    def prep(self, shared):
-        # Get the repositories to display
-        if "quality_repositories" in shared and shared["quality_repositories"]:
-            return shared["quality_repositories"]
-        return shared.get("repository_quality_data", [])
-    
-    def exec(self, repositories):
-        # Format repositories for display
-        return format_repository_list(repositories)
-    
-    def post(self, shared, prep_res, exec_res):
-        # Store the formatted list
-        shared["repository_display"] = exec_res
-        return "select_repo"  # Prompt user to select a repository
-
-class SelectRepositoryNode(Node):
-    """Prompts the user to select a repository for analysis."""
-    
-    def prep(self, shared):
-        # Get repositories for selection
-        if "quality_repositories" in shared and shared["quality_repositories"]:
-            repos = shared["quality_repositories"]
-        else:
-            repos = shared.get("repository_quality_data", [])
-        
-        return repos
-    
-    def exec(self, repositories):
-        # Create a selection prompt
-        selection_prompt = "Please select a repository to analyze:"
+        # Check if URL is valid and is a GitHub URL
+        if not parsed_url.netloc or 'github.com' not in parsed_url.netloc:
+            return {"error": "Invalid GitHub URL", "url": repo_url}
+            
+        # Extract username and repo name
+        path_parts = parsed_url.path.strip('/').split('/')
+        if len(path_parts) < 2:
+            return {"error": "Invalid GitHub repository format", "url": repo_url}
+            
         return {
-            "prompt": selection_prompt,
-            "options": repositories
+            "url": repo_url,
+            "username": path_parts[0],
+            "repo_name": path_parts[1],
+            "is_valid": True
         }
     
     def post(self, shared, prep_res, exec_res):
-        # Store selection data
-        shared["selection_data"] = exec_res
-        return "wait_for_selection"  # Wait for user's selection
+        """Process validated repository URL."""
+        if not exec_res:
+            shared["error"] = "No repository URL provided"
+            return "error"
+            
+        if "error" in exec_res:
+            shared["error"] = exec_res["error"]
+            return "error"
+            
+        shared["validated_repo"] = exec_res
+        return "default"
 
 class AnalyzeRepositoryNode(Node):
-    """Performs detailed analysis of the selected repository."""
-    
+    """
+    Node for analyzing a GitHub repository.
+    """
     def prep(self, shared):
-        # Get the selected repository URL
-        selected_repo = shared.get("selected_repository", {})
-        return selected_repo.get("url", "")
+        """Prepare repository URL from shared data."""
+        return shared.get("validated_repo", {}).get("url")
     
     def exec(self, repo_url):
+        """Analyze GitHub repository."""
         if not repo_url:
-            return {"error": "No repository URL provided"}
-        
-        # Analyze the repository
+            return {"error": "No valid repository URL provided"}
+            
+        from utils.github import analyze_repository
         return analyze_repository(repo_url)
     
     def post(self, shared, prep_res, exec_res):
-        # Store the repository analysis
-        shared["repository_analysis"] = exec_res
-        
-        # Check for errors
-        if "error" in exec_res:
+        """Process repository analysis results."""
+        if not exec_res:
+            shared["error"] = "Failed to analyze repository"
             return "analysis_error"
-        
-        return "analyze_with_llm"  # Continue to LLM analysis
-
-class AnalysisErrorNode(Node):
-    """Handles repository analysis errors."""
-    
-    def prep(self, shared):
-        return shared.get("repository_analysis", {}).get("error", "An error occurred during repository analysis")
-    
-    def exec(self, error_message):
-        return f"Error analyzing repository: {error_message}\n\nPlease select another repository to analyze."
-    
-    def post(self, shared, prep_res, exec_res):
-        shared["error_message"] = exec_res
-        return "display_repos"  # Go back to repository display
+            
+        if "error" in exec_res:
+            shared["error"] = exec_res["error"]
+            return "analysis_error"
+            
+        shared["repo_analysis"] = exec_res
+        return "default"
 
 class AnalyzeWithLLMNode(Node):
-    """Analyzes repository data using an LLM to evaluate its usefulness."""
-    
+    """
+    Node to analyze repository data with an LLM.
+    """
     def prep(self, shared):
-        # Gather required inputs
-        repo_data = shared.get("repository_data", {})
-        keywords = shared.get("keywords", [])
-        tech_stack = shared.get("tech_stack", [])
-        features = shared.get("features", [])
-        llm_config = shared.get("llm_config", {})
+        """Prepare repository analysis data for LLM."""
+        return shared.get("repo_analysis"), shared.get("validated_repo")
+    
+    def exec(self, inputs):
+        """Analyze repository with LLM."""
+        repo_analysis, validated_repo = inputs
         
-        # Validate necessary data is present
-        if not repo_data:
-            raise ValueError("Repository data is missing")
-        
-        if not features and not keywords and not tech_stack:
-            raise ValueError("User requirements are missing")
+        if not repo_analysis or not validated_repo:
+            return {"error": "Missing repository data for analysis"}
             
+        from utils.llm import call_llm
+        
+        # Prepare a prompt for the LLM to analyze the repository
+        prompt = f"""
+        Analyze this GitHub repository structure and provide insights:
+        
+        Repository: {validated_repo['url']}
+        Owner: {validated_repo['username']}
+        Name: {validated_repo['repo_name']}
+        
+        Repository Analysis:
+        {repo_analysis}
+        
+        Please provide:
+        1. A summary of the repository's purpose
+        2. The main technologies/frameworks used
+        3. The overall architecture
+        4. Key components and their relationships
+        5. Recommendations for someone wanting to understand this codebase
+        """
+        
+        analysis = call_llm(prompt)
         return {
-            "repo_data": repo_data,
-            "keywords": keywords,
-            "tech_stack": tech_stack,
-            "features": features,
-            "llm_config": llm_config
+            "llm_analysis": analysis,
+            "repo_data": validated_repo
         }
     
-    @log_execution_time
+    def post(self, shared, prep_res, exec_res):
+        """Store LLM analysis results."""
+        if "error" in exec_res:
+            shared["error"] = exec_res["error"]
+            return "error"
+            
+        shared["llm_analysis"] = exec_res["llm_analysis"]
+        return "default"
+
+class AnalysisErrorNode(Node):
+    """
+    Node to handle repository analysis errors.
+    """
+    def prep(self, shared):
+        """Get error information."""
+        return shared.get("error", "Unknown error")
+    
+    def exec(self, error_message):
+        """Format error message for display."""
+        return f"Error analyzing repository: {error_message}"
+    
+    def post(self, shared, prep_res, exec_res):
+        """Store formatted error message."""
+        shared["formatted_error"] = exec_res
+        print(exec_res)
+        return "default"
+
+# Add other node classes from the original file below...
+# Tutorial generation nodes
+class FetchRepo(Node):
+    """Fetches a repository from GitHub or a local directory."""
+    
+    def prep(self, shared):
+        return shared.get("repo_url"), shared.get("local_dir")
+    
     def exec(self, inputs):
-        repo_data = inputs["repo_data"]
-        keywords = inputs["keywords"]
-        tech_stack = inputs["tech_stack"]
-        features = inputs["features"]
-        llm_config = inputs["llm_config"]
+        repo_url, local_dir = inputs
         
-        # Get LLM configuration if provided
-        provider = llm_config.get("provider")
-        model = llm_config.get("model")
+        if local_dir:
+            # Use local repository
+            from utils.crawl_local_files import crawl_local_files
+            return crawl_local_files(local_dir)
         
-        return analyze_repository_with_llm(
-            repo_data, keywords, tech_stack, features,
-            model=model, provider=provider
+        if repo_url:
+            # Use GitHub repository
+            from utils.crawl_github_files import crawl_github_files
+            from utils.github import get_github_token
+            
+            # Get token from session store
+            github_token = get_github_token()
+            
+            return crawl_github_files(repo_url, token=github_token)
+        
+        return {"error": "No repository source provided"}
+    
+    def post(self, shared, prep_res, exec_res):
+        if "error" in exec_res:
+            shared["error"] = exec_res["error"]
+            return "error"
+            
+        shared["repository_files"] = exec_res
+        return "default"
+
+# Additional tutorial generation nodes...
+# These are typically found in the original nodes.py but can be added as needed
+
+class IdentifyAbstractions(Node):
+    """Identifies key abstractions, patterns, and concepts in the repository."""
+    
+    def prep(self, shared):
+        return shared.get("repository_files")
+    
+    def exec(self, files):
+        if not files:
+            return {"error": "No repository files provided"}
+        
+        from utils.llm import call_llm
+        
+        # Extract content sample and key files
+        file_paths = list(files.keys())
+        sample_content = "\n".join([f"File: {path}\n{files[path][:500]}..." for path in file_paths[:10]])
+        
+        prompt = f"""
+        Analyze the following files from a repository and identify key abstractions, patterns, and concepts:
+        
+        {sample_content}
+        
+        Please identify the key abstractions, patterns, and software concepts present in this codebase.
+        Focus on the main architectural elements, design patterns, and core domain models.
+        """
+        
+        analysis = call_llm(prompt)
+        return {"abstractions": analysis, "file_count": len(files)}
+    
+    def post(self, shared, prep_res, exec_res):
+        if "error" in exec_res:
+            shared["error"] = exec_res["error"]
+            return "error"
+            
+        shared["abstractions"] = exec_res["abstractions"]
+        return "default"
+
+class AnalyzeRelationships(Node):
+    """Analyzes relationships between components and creates a structure map."""
+    
+    def prep(self, shared):
+        return shared.get("repository_files"), shared.get("abstractions")
+    
+    def exec(self, inputs):
+        files, abstractions = inputs
+        
+        if not files or not abstractions:
+            return {"error": "Missing repository files or abstractions"}
+        
+        from utils.llm import call_llm
+        
+        # Extract core file structure
+        file_structure = "\n".join([f"- {path}" for path in list(files.keys())[:50]])
+        
+        prompt = f"""
+        Based on the following file structure and identified abstractions, analyze the relationships
+        between components in this codebase:
+        
+        Identified abstractions:
+        {abstractions}
+        
+        File structure:
+        {file_structure}
+        
+        Please map out how these components relate to each other, focusing on:
+        1. Dependencies between modules
+        2. Information flow
+        3. Hierarchical relationships
+        4. Core system interactions
+        """
+        
+        relationships = call_llm(prompt)
+        return {"relationships": relationships}
+    
+    def post(self, shared, prep_res, exec_res):
+        if "error" in exec_res:
+            shared["error"] = exec_res["error"]
+            return "error"
+            
+        shared["relationships"] = exec_res["relationships"]
+        return "default"
+
+class OrderChapters(Node):
+    """Creates a logical sequence of chapters for the tutorial."""
+    
+    def prep(self, shared):
+        return shared.get("abstractions"), shared.get("relationships"), shared.get("language", "english")
+    
+    def exec(self, inputs):
+        abstractions, relationships, language = inputs
+        
+        if not abstractions or not relationships:
+            return {"error": "Missing abstractions or relationships"}
+        
+        from utils.llm import call_llm
+        
+        prompt = f"""
+        Based on the following abstractions and relationships, create a logical sequence of chapters
+        for a tutorial in {language}:
+        
+        Abstractions:
+        {abstractions}
+        
+        Relationships:
+        {relationships}
+        
+        Please outline 5-8 chapters that would form an effective tutorial for understanding this codebase.
+        For each chapter, provide:
+        1. Title
+        2. Brief description of what the chapter covers
+        3. Key concepts to be explained
+        
+        Format as a numbered list of chapters with clear indentation for descriptions.
+        """
+        
+        chapters_outline = call_llm(prompt)
+        return {"chapters_outline": chapters_outline}
+    
+    def post(self, shared, prep_res, exec_res):
+        if "error" in exec_res:
+            shared["error"] = exec_res["error"]
+            return "error"
+            
+        shared["chapters_outline"] = exec_res["chapters_outline"]
+        
+        # Extract the number of chapters (approximation based on numbered list)
+        import re
+        chapter_count = len(re.findall(r'^\d+\.', exec_res["chapters_outline"], re.MULTILINE))
+        shared["tutorial_total_chapters"] = chapter_count
+        
+        return "default"
+
+class WriteChapters(Node):
+    """Writes the individual tutorial chapters based on the outline."""
+    
+    def prep(self, shared):
+        return (
+            shared.get("repository_files"),
+            shared.get("abstractions"),
+            shared.get("relationships"),
+            shared.get("chapters_outline"),
+            shared.get("language", "english"),
+            shared.get("tutorial_output_dir", "tutorial")
         )
     
+    def exec(self, inputs):
+        files, abstractions, relationships, chapters_outline, language, output_dir = inputs
+        
+        if not all([files, chapters_outline, output_dir]):
+            return {"error": "Missing required inputs for chapter writing"}
+        
+        import os
+        import re
+        from utils.llm import call_llm
+        
+        # Create output directory if it doesn't exist
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Extract chapter titles for the table of contents
+        chapter_titles = re.findall(r'^\d+\.\s+(.*?)$', chapters_outline, re.MULTILINE)
+        
+        # Write each chapter
+        chapters = []
+        for i, title in enumerate(chapter_titles, 1):
+            # Find the content for this chapter in the outline
+            chapter_content_match = re.search(f"{i}\\. {re.escape(title)}(.*?)(?=\\d+\\. |$)", 
+                                             chapters_outline, re.DOTALL)
+            chapter_description = chapter_content_match.group(1).strip() if chapter_content_match else ""
+            
+            prompt = f"""
+            Write Chapter {i}: {title} for a tutorial in {language}.
+            
+            Chapter Description:
+            {chapter_description}
+            
+            Repository Context:
+            - Abstractions: {abstractions[:500]}...
+            - Relationships: {relationships[:500]}...
+            
+            The chapter should:
+            1. Be well-structured with clear headings (use markdown format with # for headers)
+            2. Include code examples where relevant
+            3. Explain concepts clearly for someone new to this codebase
+            4. Be comprehensive yet concise
+            5. Include a brief introduction and conclusion
+            
+            Write the complete chapter in markdown format.
+            """
+            
+            chapter_content = call_llm(prompt)
+            
+            # Save the chapter to a file
+            filename = f"chapter_{i:02d}_{title.lower().replace(' ', '_')}.md"
+            filepath = os.path.join(output_dir, filename)
+            
+            with open(filepath, 'w') as f:
+                f.write(f"# Chapter {i}: {title}\n\n")
+                f.write(chapter_content)
+            
+            chapters.append({
+                "number": i,
+                "title": title,
+                "filename": filename,
+                "path": filepath
+            })
+        
+        return {"chapters": chapters, "chapter_count": len(chapters)}
+    
     def post(self, shared, prep_res, exec_res):
-        # Store the LLM analysis
-        shared["repository_llm_analysis"] = exec_res
-        return "generate_guides"
+        if "error" in exec_res:
+            shared["error"] = exec_res["error"]
+            return "error"
+            
+        shared["chapters"] = exec_res["chapters"]
+        return "default"
 
-class GenerateImplementationGuidesNode(Node):
-    """Generates implementation guides based on the repository analysis."""
+class CombineTutorial(Node):
+    """Creates the final tutorial by combining chapters and adding navigation."""
     
     def prep(self, shared):
-        analysis = shared.get("repository_analysis", {}).get("detailed_analysis", {})
-        tech_stack = shared.get("tech_stack", [])
-        
-        return {
-            "analysis": analysis,
-            "tech_stack": tech_stack
-        }
+        return (
+            shared.get("chapters"),
+            shared.get("tutorial_output_dir", "tutorial"),
+            shared.get("language", "english")
+        )
     
     def exec(self, inputs):
-        analysis = inputs.get("analysis", {})
-        tech_stack = inputs.get("tech_stack", [])
+        chapters, output_dir, language = inputs
         
-        # Generate implementation guides
-        guides = generate_implementation_guides_from_analysis(analysis, tech_stack)
+        if not chapters or not output_dir:
+            return {"error": "Missing chapters or output directory"}
         
-        return guides
+        import os
+        
+        # Create the index page with table of contents
+        index_content = f"# Tutorial - {language.capitalize()}\n\n"
+        index_content += "## Table of Contents\n\n"
+        
+        for chapter in sorted(chapters, key=lambda x: x["number"]):
+            index_content += f"{chapter['number']}. [{chapter['title']}]({chapter['filename']})\n"
+        
+        # Add navigation links to each chapter
+        for i, chapter in enumerate(sorted(chapters, key=lambda x: x["number"])):
+            chapter_path = chapter["path"]
+            
+            with open(chapter_path, 'r') as f:
+                chapter_content = f.read()
+            
+            # Add navigation bar
+            nav_bar = "## Navigation\n\n"
+            
+            if i > 0:
+                prev_chapter = chapters[i-1]
+                nav_bar += f"[← Previous: {prev_chapter['title']}]({prev_chapter['filename']}) | "
+            else:
+                nav_bar += "← Previous | "
+                
+            nav_bar += f"[↑ Table of Contents](index.md)"
+            
+            if i < len(chapters) - 1:
+                next_chapter = chapters[i+1]
+                nav_bar += f" | [Next: {next_chapter['title']} →]({next_chapter['filename']})"
+            else:
+                nav_bar += " | Next →"
+            
+            with open(chapter_path, 'w') as f:
+                f.write(chapter_content + "\n\n" + nav_bar)
+        
+        # Write the index file
+        index_path = os.path.join(output_dir, "index.md")
+        with open(index_path, 'w') as f:
+            f.write(index_content)
+            
+        return {"index_path": index_path, "total_chapters": len(chapters)}
     
     def post(self, shared, prep_res, exec_res):
-        # Store the implementation guides
-        shared["implementation_guides"] = exec_res
-        shared["repository_analysis"]["implementation_guides"] = exec_res
+        if "error" in exec_res:
+            shared["error"] = exec_res["error"]
+            return "error"
+            
+        shared["tutorial_index"] = exec_res["index_path"]
+        shared["tutorial_total_chapters"] = exec_res["total_chapters"]
         
-        return "format_for_mcp"  # Continue to MCP formatting
-
-class FormatForMCPNode(Node):
-    """Formats the analysis data for MCP server."""
-    
-    def prep(self, shared):
-        return shared.get("repository_analysis", {})
-    
-    def exec(self, repo_analysis):
-        # Format data for MCP
-        return format_for_mcp(repo_analysis)
-    
-    def post(self, shared, prep_res, exec_res):
-        # Store the MCP package
-        shared["mcp_package"] = exec_res
+        print(f"\nTutorial successfully generated with {exec_res['total_chapters']} chapters.")
+        print(f"Index file created at: {exec_res['index_path']}")
         
-        return "create_mcp"  # Continue to create MCP server
-
-class CreateMCPServerNode(Node):
-    """Creates an MCP server with the formatted data."""
-    
-    def prep(self, shared):
-        mcp_package = shared.get("mcp_package", {})
-        
-        return {
-            "name": mcp_package.get("name", "repository-mcp"),
-            "tools": mcp_package.get("tools", []),
-            "implementation_guides": mcp_package.get("implementation_guides", {})
-        }
-    
-    def exec(self, inputs):
-        name = inputs.get("name", "repository-mcp")
-        tools = inputs.get("tools", [])
-        guides = inputs.get("implementation_guides", {})
-        
-        # Create MCP server
-        mcp_server = create_mcp_server(name, tools, guides)
-        
-        return mcp_server
-    
-    def post(self, shared, prep_res, exec_res):
-        # Store the MCP server
-        shared["mcp_server"] = exec_res
-        
-        return "start_mcp"  # Continue to start the server
-
-class StartMCPServerNode(Node):
-    """Starts the MCP server."""
-    
-    def prep(self, shared):
-        return shared.get("mcp_server")
-    
-    def exec(self, mcp_server):
-        if not mcp_server:
-            return {"status": "error", "message": "No MCP server available"}
-        
-        # Start the server
-        server_info = start_mcp_server(mcp_server)
-        
-        return server_info
-    
-    def post(self, shared, prep_res, exec_res):
-        # Store server info
-        shared["server_info"] = exec_res
-        
-        if exec_res.get("status") == "error":
-            return "server_error"
-        
-        return "complete"  # Process complete
-
-class ServerErrorNode(Node):
-    """Handles MCP server startup errors."""
-    
-    def prep(self, shared):
-        return shared.get("server_info", {}).get("error", "Unknown error starting server")
-    
-    def exec(self, error):
-        return f"Error starting MCP server: {error}\n\nImplementation guides have been generated but the server could not be started."
-    
-    def post(self, shared, prep_res, exec_res):
-        shared["error_message"] = exec_res
-        return "complete"  # Complete with error
-
-class ProcessCompleteNode(Node):
-    """Finalizes the process and presents results to the user."""
-    
-    def prep(self, shared):
-        server_info = shared.get("server_info", {})
-        repo_name = shared.get("repository_analysis", {}).get("basic_info", {}).get("name", "repository")
-        guides = shared.get("implementation_guides", {})
-        
-        return {
-            "server_info": server_info,
-            "repo_name": repo_name,
-            "guides": guides
-        }
-    
-    def exec(self, inputs):
-        server_info = inputs.get("server_info", {})
-        repo_name = inputs.get("repo_name", "repository")
-        guides = inputs.get("guides", {})
-        
-        # Format a success message
-        message = f"""
-Analysis complete for {repo_name}!
-
-MCP Server is running at {server_info.get('url', 'localhost:8000')}
-
-The server provides {len(guides)} implementation guides:
-{', '.join(guides.keys())}
-
-You can access these guides through the MCP server's API.
-"""
-        return message
-    
-    def post(self, shared, prep_res, exec_res):
-        shared["completion_message"] = exec_res
-        return "end"  # End the flow 
+        return "default"

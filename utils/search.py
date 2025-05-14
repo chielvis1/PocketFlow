@@ -5,6 +5,8 @@ Search utilities for Repository Analysis to MCP Server system.
 import os
 import json
 import sys
+import time  # Added time module import for sleep functionality
+import random  # For random user agent selection
 from typing import Dict, List, Any, Optional, Tuple
 from urllib.parse import urlparse
 
@@ -266,81 +268,105 @@ def scrape_youtube_video(video_url: str) -> Dict[str, Any]:
     if not YT_DLP_AVAILABLE:
         raise ImportError("yt-dlp is required for YouTube video scraping. Install with: pip install -U yt-dlp")
     
-    # Configure yt-dlp options to extract comments and detailed info
-    ydl_opts = {
-        'quiet': True,
-        'ignoreerrors': True,
-        'no_warnings': True,
-        'writeinfojson': True,
-        'getcomments': True,
-        'getdescription': True,
-        'get_title': True,
-        'get_id': True,
-        'no_color': True,
-        'skip_download': True,
-        'format': 'best', # Just to avoid errors, not actually downloading
-        'extract_flat': False, # We want full info, not just playlist metadata
-        'extractor_args': {'youtube': {'skip': ['dash', 'hls']}}  # Skip streams for speed
+    # Initialize with default values and assume failure until proven otherwise
+    video_data = {
+        "title": "",
+        "uploader": "",
+        "upload_date": "",
+        "view_count": 0,
+        "duration": 0,
+        "description": "",
+        "comments": [],
+        "github_urls": [],
+        "other_potential_repo_links": [],
+        "scrape_failed": True  # Assume failure until proven otherwise
     }
     
-    # Extract video information
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(video_url, download=False)
-        
-        # Extract basic video information
-        title = info.get('title', '')
-        description = info.get('description', '')
-        uploader = info.get('uploader', '')
-        view_count = info.get('view_count', 0)
-        upload_date = info.get('upload_date', '')
-        duration = info.get('duration', 0)
-        
-        # Extract comments if available
-        comments = []
-        comments_data = info.get('comments', [])
-        for comment in comments_data[:30]:  # Check more comments for GitHub URLs
-            comment_text = comment.get('text', '')
-            if comment_text:
-                comments.append(comment_text)
-        
-        # Try to extract GitHub URLs from description
-        description_urls = extract_github_urls(description) if description else []
-        
-        # Try to extract GitHub URLs from comments
-        comment_text = "\n".join(comments)
-        comment_urls = extract_github_urls(comment_text) if comment_text else []
-        
-        # Combine and deduplicate GitHub URLs
-        all_github_urls = list(set(description_urls + comment_urls))
-        
-        # Extract other links from description that might be GitHub repository references
-        # but weren't caught by the regex pattern
-        other_links = []
-        if description:
-            for line in description.split('\n'):
-                if 'http' in line and 'git' in line.lower():
-                    other_links.append(line.strip())
-        
-        return {
-            "title": title,
-            "uploader": uploader,
-            "upload_date": upload_date,
-            "view_count": view_count,
-            "duration": duration,
-            "description": description,
-            "comments": comments,
-            "github_urls": all_github_urls,
-            "other_potential_repo_links": other_links
+    try:
+        # Configure yt-dlp options to extract comments and detailed info
+        ydl_opts = {
+            'quiet': True,
+            'ignoreerrors': True,
+            'no_warnings': True,
+            'writeinfojson': True,
+            'getcomments': True,
+            'getdescription': True,
+            'get_title': True,
+            'get_id': True,
+            'no_color': True,
+            'skip_download': True,
+            'format': 'best', # Just to avoid errors, not actually downloading
+            'extract_flat': False, # We want full info, not just playlist metadata
+            'extractor_args': {'youtube': {'skip': ['dash', 'hls']}}  # Skip streams for speed
         }
+        
+        # Extract video information
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(video_url, download=False)
+            
+            if not info:
+                print(f"  Failed to extract info from {video_url}")
+                return video_data
+            
+            # Extract basic video information
+            video_data["title"] = info.get('title', '')
+            video_data["description"] = info.get('description', '')
+            video_data["uploader"] = info.get('uploader', '')
+            video_data["view_count"] = info.get('view_count', 0)
+            video_data["upload_date"] = info.get('upload_date', '')
+            video_data["duration"] = info.get('duration', 0)
+        
+            # Extract comments if available
+            comments = []
+            comments_data = info.get('comments', [])
+            for comment in comments_data[:30]:  # Check more comments for GitHub URLs
+                if isinstance(comment, dict):
+                    comment_text = comment.get('text', '')
+                    if comment_text:
+                        comments.append(comment_text)
+                elif isinstance(comment, str):
+                    comments.append(comment)
+        
+            video_data["comments"] = comments
+            
+            # Try to extract GitHub URLs from description
+            description_urls = extract_github_urls(video_data["description"]) if video_data["description"] else []
+        
+            # Try to extract GitHub URLs from comments - all comments are now strings
+            comment_text = "\n".join(comments)
+            comment_urls = extract_github_urls(comment_text) if comment_text else []
+        
+            # Combine and deduplicate GitHub URLs
+            all_github_urls = list(set(description_urls + comment_urls))
+            video_data["github_urls"] = all_github_urls
+        
+            # Extract other links from description that might be GitHub repository references
+            # but weren't caught by the regex pattern
+            other_links = []
+            if video_data["description"]:
+                for line in video_data["description"].split('\n'):
+                    if 'http' in line and 'git' in line.lower():
+                        other_links.append(line.strip())
+        
+            video_data["other_potential_repo_links"] = other_links
+            video_data["scrape_failed"] = False  # Mark scrape as successful
+            
+            return video_data
+            
+    except Exception as e:
+        print(f"  Error scraping YouTube video {video_url}: {str(e)}")
+        return video_data  # Return with scrape_failed=True
 
 @log_execution_time("scrape_webpage")
-def scrape_webpage(url: str) -> Dict[str, Any]:
+def scrape_webpage(url: str, max_retries: int = 2) -> Dict[str, Any]:
     """
     Scrapes a webpage to extract content and GitHub URLs.
     Focuses specifically on finding GitHub repository references.
+    Includes retry mechanism with fixed 5-second delay between retries for handling 403 errors.
     
     Args:
         url: Webpage URL
+        max_retries: Maximum number of retry attempts (default: 2)
         
     Returns:
         Dictionary with page content and extracted GitHub URLs
@@ -349,66 +375,129 @@ def scrape_webpage(url: str) -> Dict[str, Any]:
         raise ImportError("requests is required for webpage scraping. Install with: pip install requests")
     
     if not BS4_AVAILABLE:
-        raise ImportError("BeautifulSoup is required for webpage scraping. Install with: pip install beautifulsoup4")
+        raise ImportError("BeautifulSoup4 is required for webpage parsing. Install with: pip install beautifulsoup4")
     
-    # Fetch the webpage
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    # Initialize with default values
+    page_data = {
+        "title": "",
+        "content": "",
+        "links": [],
+        "github_urls": [],
+        "code_blocks": [],
+        "scrape_failed": True  # Assume failure until proven otherwise
     }
-    response = requests.get(url, headers=headers, timeout=10)
-    response.raise_for_status()
     
-    # Parse HTML
-    soup = BeautifulSoup(response.text, 'html.parser')
+    # Auto-detect if URL is GitHub
+    if "github.com" in url and "/blob/" not in url:
+        # If it's already a GitHub repository
+        page_data["github_urls"] = [url]
+        page_data["scrape_failed"] = False
+        return page_data
     
-    # Extract title
-    title = soup.title.string if soup.title else ""
-    
-    # Extract main content (prioritize article or main content areas)
-    content = ""
-    
-    # Try to find article content first
-    article_tags = soup.find_all(['article', 'main', 'div.content', 'div.post'])
-    if article_tags:
-        for tag in article_tags:
-            content += tag.get_text(separator="\n", strip=True) + "\n\n"
-    else:
-        # Fallback to body content, excluding scripts, styles, etc.
-        for tag in soup.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'li']):
-            content += tag.get_text(separator="\n", strip=True) + "\n"
-    
-    # Extract all links
-    links = []
-    for a_tag in soup.find_all('a', href=True):
-        href = a_tag['href']
-        text = a_tag.get_text(strip=True)
-        if href and text:
-            # Normalize GitHub URLs if they're relative or incomplete
-            if 'github.com' in href or 'github.com' in text.lower():
-                # Try to convert relative GitHub URLs to absolute ones
-                if href.startswith('/'):
-                    if 'github.com' in url:
-                        href = f"https://github.com{href}"
+    for attempt in range(max_retries + 1):
+        try:
+            # Select user agent using centralized function
+            headers = {
+                'User-Agent': get_random_user_agent(attempt),
+                'Accept': 'text/html,application/xhtml+xml,application/xml',
+                'Accept-Language': 'en-US,en;q=0.9',
+            }
             
-            links.append({"url": href, "text": text})
+            # Log retry attempts
+            if attempt > 0:
+                print(f"  Retry attempt {attempt}/{max_retries} for {url}")
+                print("  Waiting 5 seconds before retry...")
+                time.sleep(5)  # Fixed 5-second delay between retries
+            
+            # Make the request
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()  # Raise an exception for 4XX/5XX status codes
+            
+            # Parse HTML with BeautifulSoup
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Extract page title
+            title = soup.title.string if soup.title else ""
+            
+            # Extract main content (prioritize article tags, main, or body)
+            content_tags = soup.select('article, main, .content, .post, .entry, #content')
+            if content_tags:
+                content = content_tags[0].get_text(strip=True)
+            else:
+                content = soup.body.get_text(strip=True) if soup.body else ""
+            
+            # Limit content to avoid excessively large responses
+            content = content[:5000] + "..." if len(content) > 5000 else content
+            
+            # Extract all links
+            links = []
+            for a_tag in soup.find_all('a', href=True):
+                link_text = a_tag.get_text(strip=True)
+                href = a_tag['href']
+                
+                # Convert relative URLs to absolute
+                if href.startswith('/') and not href.startswith('//'):
+                    parsed_url = urlparse(url)
+                    href = f"{parsed_url.scheme}://{parsed_url.netloc}{href}"
+                elif not (href.startswith('http://') or href.startswith('https://')):
+                    # Skip javascript: and other non-http links
+                    continue
+                
+                links.append({
+                    "url": href,
+                    "text": link_text[:100]  # Truncate long link text
+                })
+            
+            # Extract GitHub URLs
+            github_urls = extract_github_urls(response.text)
+            
+            # Extract code blocks that might contain GitHub references
+            code_blocks = []
+            for code_tag in soup.select('pre, code, .highlight'):
+                code_text = code_tag.get_text(strip=True)
+                if "github.com" in code_text and len(code_text) < 2000:  # Limit size
+                    code_blocks.append(code_text)
+                    # Also check for GitHub URLs in code blocks
+                    code_github_urls = extract_github_urls(code_text)
+                    if code_github_urls:
+                        github_urls.extend(code_github_urls)
+            
+            # Deduplicate GitHub URLs
+            github_urls = list(set(github_urls))
+            
+            # Update page data
+            page_data = {
+                "title": title,
+                "content": content,
+                "links": links,
+                "github_urls": github_urls,
+                "code_blocks": code_blocks,
+                "scrape_failed": False  # Scraping was successful
+            }
+            
+            return page_data
+            
+        except requests.exceptions.HTTPError as e:
+            status_code = e.response.status_code if hasattr(e, 'response') else 0
+            
+            if status_code == 403:
+                print(f"  Received 403 Forbidden error from {url}")
+            else:
+                print(f"  HTTP error {status_code} when scraping {url}: {str(e)}")
+            
+            # If we've exhausted retry attempts, return with scrape_failed flag
+            if attempt == max_retries:
+                return page_data
+                
+        except Exception as e:
+            print(f"  Error scraping {url}: {str(e)}")
+            
+            # If we've exhausted retry attempts, return with scrape_failed flag
+            if attempt == max_retries:
+                return page_data
     
-    # Extract all GitHub URLs from the entire page
-    github_urls = extract_github_urls(response.text) if response.text else []
-    
-    # Look for code blocks that might contain GitHub references
-    code_blocks = []
-    for code_tag in soup.find_all(['code', 'pre']):
-        code_text = code_tag.get_text(strip=True)
-        if 'github.com' in code_text or 'git clone' in code_text:
-            code_blocks.append(code_text)
-    
-    return {
-        "title": title,
-        "content": content[:5000],  # Limit content size
-        "links": links[:50],  # Limit number of links
-        "github_urls": github_urls,
-        "code_blocks": code_blocks[:10]  # Include potential code blocks with GitHub references
-    }
+    # If we reach here, all retry attempts have failed
+    return page_data
 
 def extract_domain(url: str) -> str:
     """
@@ -429,6 +518,32 @@ def extract_domain(url: str) -> str:
         return domain
     except:
         return url
+
+def get_random_user_agent(index=None):
+    """
+    Get a user agent from a predefined list, optionally by index.
+    
+    Args:
+        index: Optional index to select a specific user agent
+        
+    Returns:
+        User agent string
+    """
+    user_agents = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Safari/605.1.15',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:90.0) Gecko/20100101 Firefox/90.0',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:90.0) Gecko/20100101 Firefox/90.0',
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
+        'Mozilla/5.0 (iPad; CPU OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36 Edg/91.0.864.59'
+    ]
+    
+    if index is not None:
+        return user_agents[index % len(user_agents)]
+    
+    return random.choice(user_agents)
 
 def check_content_relevance(content: Dict[str, str], 
                          keywords: List[str] = None, 
@@ -639,45 +754,47 @@ def search_and_scrape(query: str,
                      web_count: int = 5,
                      use_youtube: bool = True,
                      use_web: bool = True,
-                     use_llm: bool = True) -> Dict[str, Any]:
+                     use_llm: bool = True,
+                     setup_llm_first: bool = True,
+                     threshold: float = 0.5) -> Dict[str, Any]:
     """
-    Performs a complete search and scrape workflow to find GitHub repositories.
+    Performs search and scrape process to find GitHub repositories.
+    Combines YouTube and web search, with scraping to extract GitHub URLs.
     
     Args:
         query: Search query
-        keywords: Additional keywords for relevance filtering
-        tech_stack: Technologies from user query
-        features: Features the user is looking for
+        keywords: Keywords for relevance filtering
+        tech_stack: Technologies for relevance filtering
+        features: Features for relevance filtering
         youtube_count: Number of YouTube videos to search
         web_count: Number of web pages to search
         use_youtube: Whether to include YouTube search
         use_web: Whether to include web search
-        use_llm: Whether to use LLM enhancements for search refinement and relevance checking
+        use_llm: Whether to use LLM enhancements
+        setup_llm_first: Whether to set up LLM before searching or defer to caller
+        threshold: Minimum relevance score (0.0-1.0) for filtering results
         
     Returns:
         Dictionary with search results and extracted GitHub URLs
     """
-    if not keywords:
-        keywords = []
-    if not tech_stack:
-        tech_stack = []
-    if not features:
-        features = []
+    # Initialize empty lists if None
+    keywords = keywords or []
+    tech_stack = tech_stack or []
+    features = features or []
     
-    # Refine the search query using LLM if enabled
-    if use_llm:
-        try:
-            refined_query = refine_search_query(query, keywords, tech_stack, features)
-        except Exception as e:
-            print(f"Query refinement failed: {str(e)}. Using original query.")
-            refined_query = query
-    else:
-        refined_query = query
-    
-    all_github_urls = []
-    all_repo_quality = {}  # Store quality assessments by URL
+    # Tracking variables
     youtube_results = []
     web_results = []
+    all_github_urls = []
+    scrape_failure_count = 0
+    total_scrape_attempts = 0
+    relevance_scores = []
+    
+    # Skip LLM refinement if setup_llm_first is False
+    refined_query = query
+    if use_llm and setup_llm_first:
+        refined_query = refine_search_query(query, keywords, tech_stack, features)
+        print(f"Refined query: {refined_query}")
     
     # Search and scrape YouTube videos
     if use_youtube and youtube_count > 0:
@@ -689,48 +806,53 @@ def search_and_scrape(query: str,
             print(f"Scraping YouTube video {i+1}/{len(videos)}: {video['title']}")
             
             # Check relevance with standard or LLM-enhanced method
-            if use_llm:
+            if use_llm and setup_llm_first:
                 relevance = check_content_relevance_with_llm(
-                    video, refined_query, keywords, tech_stack, features
+                    video, refined_query, keywords, tech_stack, features, threshold=threshold
                 )
             else:
                 relevance = check_content_relevance(
-                    video, keywords, tech_stack, features
+                    video, keywords, tech_stack, features, threshold=threshold
                 )
+            
+            # Track relevance scores for reporting
+            relevance_scores.append(relevance['relevance_score'])
             
             if relevance["is_relevant"]:
                 print(f"  Relevance: {relevance['relevance_score']:.2f} - {relevance['reasoning']}")
                 
-                # Skip scraping if we already have GitHub URLs from the search
-                if video.get("github_urls"):
-                    github_urls = video.get("github_urls", [])
-                    print(f"  GitHub URLs from search: {len(github_urls)}")
-                    
-                    if github_urls:
-                        video['github_urls'] = github_urls
-                        all_github_urls.extend(github_urls)
-                        youtube_results.append(video)
-                        continue
-                
-                # If we don't have GitHub URLs yet, scrape the video
+                total_scrape_attempts += 1
                 video_data = scrape_youtube_video(video['url'])
                 
+                # Check if scraping failed
+                if video_data.get('scrape_failed', False):
+                    scrape_failure_count += 1
+                    print(f"  Scraping failed for YouTube video {video['url']} - skipping to next video")
+                    continue
+                
                 # Try enhanced URL extraction if enabled and no URLs found
-                if use_llm and not video_data.get('github_urls'):
+                if use_llm and setup_llm_first and not video_data.get('github_urls'):
+                    # Try LLM-enhanced extraction from description
                     description = video_data.get('description', '')
-                    comments_text = "\n".join(video_data.get('comments', []))
-                    
-                    # Try to extract URLs from description
                     llm_urls_desc = extract_github_urls_with_llm(description)
                     
-                    # Try to extract URLs from comments
-                    llm_urls_comments = extract_github_urls_with_llm(comments_text)
+                    # Try LLM-enhanced extraction from comments
+                    comments = video_data.get('comments', [])
                     
-                    # Combine and deduplicate
-                    llm_urls = list(set(llm_urls_desc + llm_urls_comments))
+                    # Handle both list of strings and list of dictionaries
+                    comment_texts = []
+                    for c in comments[:5]:
+                        if isinstance(c, dict):
+                            comment_texts.append(c.get('text', ''))
+                        elif isinstance(c, str):
+                            comment_texts.append(c)
                     
+                    comment_text = "\n".join(comment_texts)
+                    llm_urls_comments = extract_github_urls_with_llm(comment_text)
+                    
+                    # Combine URLs from both sources
+                    llm_urls = llm_urls_desc + llm_urls_comments
                     if llm_urls:
-                        print(f"  GitHub URLs found by LLM: {len(llm_urls)}")
                         video_data['github_urls'] = llm_urls
                 
                 github_urls = video_data.get('github_urls', [])
@@ -741,41 +863,51 @@ def search_and_scrape(query: str,
                     video['github_urls'] = github_urls
                     all_github_urls.extend(github_urls)
                     youtube_results.append(video)
+                else:
+                    print(f"  No GitHub URLs found in video {i+1}")
             else:
                 print(f"  Skipping (not relevant): {relevance['reasoning']}")
     
     # Search and scrape web pages
     if use_web and web_count > 0:
-        print(f"Searching web for: {refined_query}")
+        print(f"\nSearching web for: {refined_query}")
         pages = search_web(refined_query, max_results=web_count, 
                          keywords=keywords, tech_stack=tech_stack, features=features)
         
         for i, page in enumerate(pages):
-            print(f"Scraping webpage {i+1}/{len(pages)}: {page['title']}")
+            print(f"Scraping web page {i+1}/{len(pages)}: {page['title']}")
             
             # Check relevance with standard or LLM-enhanced method
-            if use_llm:
+            if use_llm and setup_llm_first:
                 relevance = check_content_relevance_with_llm(
-                    page, refined_query, keywords, tech_stack, features
+                    page, refined_query, keywords, tech_stack, features, threshold=threshold
                 )
             else:
                 relevance = check_content_relevance(
-                    page, keywords, tech_stack, features
+                    page, keywords, tech_stack, features, threshold=threshold
                 )
+            
+            # Track relevance scores for reporting
+            relevance_scores.append(relevance['relevance_score'])
             
             if relevance["is_relevant"]:
                 print(f"  Relevance: {relevance['relevance_score']:.2f} - {relevance['reasoning']}")
                 
+                total_scrape_attempts += 1
                 page_data = scrape_webpage(page['url'])
                 
+                # Check if scraping failed
+                if page_data.get('scrape_failed', False):
+                    scrape_failure_count += 1
+                    print(f"  Scraping failed for web page {page['url']} - skipping to next page")
+                    continue
+                
                 # Try enhanced URL extraction if enabled and no URLs found
-                if use_llm and not page_data.get('github_urls'):
-                    # Try LLM-enhanced extraction from content
-                    content = page_data.get('content', '')
-                    llm_urls = extract_github_urls_with_llm(content)
-                    
+                if use_llm and setup_llm_first and not page_data.get('github_urls'):
+                    # Use LLM to extract GitHub URLs
+                    page_text = page_data.get('text', '')
+                    llm_urls = extract_github_urls_with_llm(page_text[:5000])  # Limit text length for LLM
                     if llm_urls:
-                        print(f"  GitHub URLs found by LLM: {len(llm_urls)}")
                         page_data['github_urls'] = llm_urls
                 
                 github_urls = page_data.get('github_urls', [])
@@ -786,15 +918,20 @@ def search_and_scrape(query: str,
                     page['github_urls'] = github_urls
                     all_github_urls.extend(github_urls)
                     web_results.append(page)
+                else:
+                    print(f"  No GitHub URLs found in page {i+1}")
             else:
                 print(f"  Skipping (not relevant): {relevance['reasoning']}")
     
     # Deduplicate GitHub URLs
     unique_github_urls = list(set(all_github_urls))
     
-    # Assess repository quality if LLM is enabled
+    # Calculate average relevance score if available
+    avg_relevance = sum(relevance_scores) / len(relevance_scores) if relevance_scores else 0
+    
+    # Skip repo quality assessment if not using LLM or deferring setup
     repos_with_quality = []
-    if use_llm:
+    if use_llm and setup_llm_first:
         print("Assessing repository quality...")
         for url in unique_github_urls:
             quality = assess_repository_quality(url, query, features)
@@ -811,114 +948,141 @@ def search_and_scrape(query: str,
         # Update the list of URLs to be in quality order
         unique_github_urls = [repo["url"] for repo in repos_with_quality]
     
+    print(f"\nSearch complete. Found {len(unique_github_urls)} unique GitHub repositories.")
+    if scrape_failure_count > 0:
+        print(f"Scraping failed for {scrape_failure_count} out of {total_scrape_attempts} pages/videos.")
+    
     return {
         "query": query,
-        "refined_query": refined_query if use_llm else query,
+        "refined_query": refined_query,
         "keywords": keywords,
         "tech_stack": tech_stack,
         "features": features,
         "youtube_results": youtube_results,
         "web_results": web_results,
         "github_urls": unique_github_urls,
-        "repos_with_quality": repos_with_quality if use_llm else [],
+        "repos_with_quality": repos_with_quality,
         "total_github_urls": len(unique_github_urls),
-        "llm_enhanced": use_llm
+        "llm_enhanced": use_llm and setup_llm_first,
+        "average_relevance": avg_relevance,
+        "scrape_success_rate": 1 - (scrape_failure_count / total_scrape_attempts) if total_scrape_attempts > 0 else 0
     }
 
-def interactive_search() -> Dict[str, Any]:
+def interactive_search(initial_query=None) -> Dict[str, Any]:
     """
-    Runs an interactive search session to find GitHub repositories.
-    Provides user control over search configuration.
+    Interactive search mode with detailed configuration options.
+    Allows users to set keywords, tech stack, and features, then collects
+    all inputs for search configuration.
     
-    Returns:
-        Search results with GitHub URLs
-    """
-    print("=" * 50)
-    print("GitHub Repository Finder")
-    print("=" * 50)
+    When called from main.py, this function only collects user inputs but
+    doesn't process them with LLM - that happens after LLM setup.
     
-    query = input("Enter your search query: ")
-    
-    # Get additional filtering parameters
-    keywords_input = input("Enter keywords for filtering (comma-separated, or press Enter to skip): ")
-    keywords = [k.strip() for k in keywords_input.split(",")] if keywords_input else []
-    
-    tech_stack_input = input("Enter technologies/frameworks (comma-separated, or press Enter to skip): ")
-    tech_stack = [t.strip() for t in tech_stack_input.split(",")] if tech_stack_input else []
-    
-    features_input = input("Enter desired features (comma-separated, or press Enter to skip): ")
-    features = [f.strip() for f in features_input.split(",")] if features_input else []
-    
-    # Ask about search sources
-    use_youtube = input("Include YouTube search? (y/n, default: y): ").lower() != 'n'
-    use_web = input("Include web search? (y/n, default: y): ").lower() != 'n'
-    
-    # Ask about LLM enhancements
-    use_llm = input("Use LLM enhancements for smarter search? (y/n, default: y): ").lower() != 'n'
-    
-    # Get count parameters
-    youtube_count = 0
-    web_count = 0
-    
-    if use_youtube:
-        youtube_count = int(input("Number of YouTube videos to analyze (default: 5): ") or 5)
-    
-    if use_web:
-        web_count = int(input("Number of web pages to analyze (default: 5): ") or 5)
-    
-    # Set minimum threshold for relevance
-    relevance_threshold = float(input("Minimum relevance score (0.0-1.0, default: 0.5): ") or 0.5)
-    
-    print("\nStarting search and scrape process...")
-    results = search_and_scrape(
-        query=query,
-        keywords=keywords,
-        tech_stack=tech_stack,
-        features=features,
-        youtube_count=youtube_count,
-        web_count=web_count,
-        use_youtube=use_youtube,
-        use_web=use_web,
-        use_llm=use_llm
-    )
-    
-    print("\n" + "=" * 50)
-    print(f"Search Results for: {query}")
-    if use_llm and results.get("refined_query") != query:
-        print(f"Refined query: {results.get('refined_query')}")
-    print("=" * 50)
-    
-    if results['youtube_results']:
-        print(f"\nYouTube Results ({len(results['youtube_results'])} videos with GitHub URLs):")
-        for i, video in enumerate(results['youtube_results']):
-            print(f"{i+1}. {video['title']}")
-            print(f"   Channel: {video.get('channel', 'Unknown')}")
-            print(f"   URL: {video['url']}")
-            print(f"   GitHub URLs: {', '.join(video.get('github_urls', []))}")
-    
-    if results['web_results']:
-        print(f"\nWeb Results ({len(results['web_results'])} pages with GitHub URLs):")
-        for i, page in enumerate(results['web_results']):
-            print(f"{i+1}. {page['title']}")
-            print(f"   URL: {page['url']}")
-            print(f"   GitHub URLs: {', '.join(page.get('github_urls', []))}")
-    
-    print(f"\nTotal unique GitHub repositories found: {results['total_github_urls']}")
-    if results['github_urls']:
-        print("\nAll GitHub URLs:")
+    Args:
+        initial_query: Optional initial query to use as default
         
-        # Show repos with quality scores if available
-        if use_llm and results.get('repos_with_quality'):
-            print("\nRepositories (sorted by relevance and quality):")
-            for i, repo in enumerate(results.get('repos_with_quality', [])):
-                print(f"{i+1}. {repo['url']}")
-                print(f"   Relevance: {repo['relevance_score']:.2f}, Quality: {repo['quality_score']:.2f}")
-                print(f"   Assessment: {repo['reasoning']}")
-        else:
-            for i, url in enumerate(results['github_urls']):
-                print(f"{i+1}. {url}")
+    Returns:
+        Dictionary with search parameters (NOT results, just configuration)
+    """
+    print("\n=== GitHub Repository Finder: Interactive Search ===\n")
     
-    return results
+    # Step 1: Get the base query
+    if initial_query:
+        print(f"Using query: {initial_query}")
+        query = initial_query
+    else:
+        query = input("Enter your search query: ")
+    
+    # Step 2: Get keywords
+    print("\nEnter keywords to filter results (separated by commas):")
+    print("Example: authentication, backend, api")
+    keywords_input = input("Keywords: ")
+    keywords = [k.strip() for k in keywords_input.split(",") if k.strip()]
+    
+    # Step 3: Get tech stack
+    print("\nEnter tech stack components (separated by commas):")
+    print("Example: Node.js, Express, MongoDB")
+    tech_input = input("Tech stack: ")
+    tech_stack = [t.strip() for t in tech_input.split(",") if t.strip()]
+    
+    # Step 4: Get features
+    print("\nEnter specific features you're looking for (separated by commas):")
+    print("Example: JWT authentication, password reset, OAuth")
+    features_input = input("Features: ")
+    features = [f.strip() for f in features_input.split(",") if f.strip()]
+    
+    # Step 5: Configure search options
+    print("\n=== Search Configuration ===")
+    
+    # YouTube search
+    use_youtube = input("Include YouTube search? (y/n, default: y): ").lower() != "n"
+    youtube_count = 5
+    if use_youtube:
+        try:
+            count = input("Number of YouTube videos to search (default: 5): ")
+            if count.strip():
+                youtube_count = int(count)
+        except ValueError:
+            print("Invalid number. Using default: 5")
+    
+    # Web search
+    use_web = input("Include web search? (y/n, default: y): ").lower() != "n"
+    web_count = 10
+    if use_web:
+        try:
+            count = input("Number of web pages to search (default: 10): ")
+            if count.strip():
+                web_count = int(count)
+        except ValueError:
+            print("Invalid number. Using default: 10")
+    
+    # LLM enhancement
+    use_llm = input("Use LLM to enhance results and evaluate quality? (y/n, default: y): ").lower() != "n"
+    
+    # Relevance threshold
+    relevance_threshold = 0.5
+    if use_youtube or use_web:
+        try:
+            threshold_input = input("Set relevance threshold (0.0-1.0, default: 0.5): ")
+            if threshold_input.strip():
+                input_value = float(threshold_input)
+                if 0.0 <= input_value <= 1.0:
+                    relevance_threshold = input_value
+                else:
+                    print("Invalid threshold (must be between 0.0 and 1.0). Using default: 0.5")
+        except ValueError:
+            print("Invalid threshold format. Using default: 0.5")
+    
+    # Summary before execution
+    print("\n=== Search Summary ===")
+    print(f"Query: {query}")
+    print(f"Keywords: {', '.join(keywords) if keywords else 'None'}")
+    print(f"Tech Stack: {', '.join(tech_stack) if tech_stack else 'None'}")
+    print(f"Features: {', '.join(features) if features else 'None'}")
+    print(f"YouTube Search: {'Enabled' if use_youtube else 'Disabled'}{f' ({youtube_count} videos)' if use_youtube else ''}")
+    print(f"Web Search: {'Enabled' if use_web else 'Disabled'}{f' ({web_count} pages)' if use_web else ''}")
+    print(f"LLM Enhancement: {'Enabled' if use_llm else 'Disabled'}")
+    print(f"Relevance Threshold: {relevance_threshold}")
+    
+    if input("\nProceed with search? (y/n, default: y): ").lower() == "n":
+        print("Search canceled.")
+        return {}
+    
+    print("\nPreparing search configuration...")
+    
+    # Return the parameters without processing them
+    # The processing will be done after LLM setup in main.py
+    return {
+        "query": query,
+        "keywords": keywords,
+        "tech_stack": tech_stack,
+        "features": features,
+        "youtube_count": youtube_count,
+        "web_count": web_count,
+        "use_youtube": use_youtube,
+        "use_web": use_web,
+        "use_llm": use_llm,
+        "relevance_threshold": relevance_threshold
+    }
 
 def refine_search_query(query: str, keywords: List[str] = None, 
                        tech_stack: List[str] = None, features: List[str] = None) -> str:
@@ -1046,7 +1210,8 @@ def extract_github_urls_with_llm(text: str) -> List[str]:
 
 def assess_repository_quality(github_url: str, query: str, features: List[str] = None) -> Dict[str, Any]:
     """
-    Assess a GitHub repository's quality and relevance to the user's query using LLM.
+    Assess a GitHub repository's quality and relevance to the user's query.
+    Uses both GitHub API data (via check_repository_complexity_and_size) and LLM assessment.
     
     Args:
         github_url: URL of the GitHub repository
@@ -1060,11 +1225,67 @@ def assess_repository_quality(github_url: str, query: str, features: List[str] =
         return {
             "relevance_score": 0.0,
             "quality_score": 0.0,
-            "maintenance_score": 0.0,
             "reasoning": "Not a valid GitHub repository URL"
         }
     
-    # Format features for the prompt
+    # Get GitHub data using API (will prompt for token if needed)
+    from utils.github import check_repository_complexity_and_size
+    try:
+        print(f"Getting GitHub data for {github_url}...")
+        github_data = check_repository_complexity_and_size(github_url)
+        stars = github_data.get("stars", 0)
+        forks = github_data.get("forks", 0)
+        complexity_score = github_data.get("complexity_score", 0)
+        
+        # If we have good GitHub data, we can make a better assessment
+        if "error" not in github_data:
+            # Format features for the prompt
+            features_str = ", ".join(features) if features else "None specified"
+            
+            prompt = f"""
+            Assess this GitHub repository's relevance and quality:
+            Repository: {github_url}
+            User query: {query}
+            Desired features: {features_str}
+            
+            Repository metrics:
+            - Stars: {stars}
+            - Forks: {forks}
+            - Complexity score: {complexity_score}/10
+            - Languages: {', '.join(github_data.get('languages', {}).keys())}
+            
+            Return a JSON object with this format:
+            {{
+              "relevance_score": 0.0-1.0,
+              "quality_score": 0.0-1.0,
+              "reasoning": "brief explanation of your assessment"
+            }}
+            """
+            
+            try:
+                response = call_llm(prompt, temperature=0.3)
+                
+                # Extract JSON from the response
+                import json
+                import re
+                
+                # Look for JSON object pattern
+                json_match = re.search(r'\{[\s\S]*\}', response)
+                if json_match:
+                    json_str = json_match.group(0)
+                    result = json.loads(json_str)
+                    
+                    # Ensure required fields exist
+                    if "relevance_score" in result and "quality_score" in result:
+                        return result
+            
+            except Exception as e:
+                print(f"Repository quality LLM assessment failed: {str(e)}")
+    
+    except Exception as e:
+        print(f"Repository data retrieval failed: {str(e)}")
+    
+    # Fallback to the original approach of URL-based assessment
     features_str = ", ".join(features) if features else "None specified"
     
     prompt = f"""
@@ -1114,33 +1335,111 @@ def assess_repository_quality(github_url: str, query: str, features: List[str] =
     }
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "--interactive":
-        interactive_search()
-    else:
-        # Simple test
-        print("Testing search utilities...")
-        print("To run interactive search, use: python -m utils.search --interactive")
+    """
+    Command line interface for testing search functions.
+    
+    Usage:
+        python -m utils.search interactive
+        python -m utils.search "query"
         
-        try:
-            # Test web search
-            print("\nTesting web search...")
-            query = "python web framework"
-            results = search_web(query, max_results=2)
-            print(f"Found {len(results)} web search results for '{query}'")
-            for i, result in enumerate(results):
-                print(f"{i+1}. {result['title']}")
-                print(f"   URL: {result['url']}")
-                
-            # Test YouTube search
-            print("\nTesting YouTube search...")
-            query = "python tutorial github"
-            results = search_youtube(query, max_results=2)
-            print(f"Found {len(results)} YouTube search results for '{query}'")
-            for i, result in enumerate(results):
-                print(f"{i+1}. {result['title']}")
-                print(f"   URL: {result['url']}")
-                if result.get("github_urls"):
-                    print(f"   GitHub URLs: {', '.join(result['github_urls'])}")
-        except ImportError as e:
-            print(f"Error: {e}")
-            print("Please install the required libraries listed in requirements.txt") 
+    Options:
+        --no-youtube            Disable YouTube search
+        --no-web                Disable web search
+        --no-llm                Disable LLM enhancement
+        --youtube-count N       Set number of YouTube videos to search
+        --web-count N           Set number of web pages to search
+        --threshold N           Set relevance threshold (0.0-1.0)
+    """
+    import sys
+    
+    # Default to interactive mode with no arguments
+    if len(sys.argv) == 1 or sys.argv[1] == "interactive":
+        results = interactive_search()
+        
+        # Print results
+        if results and results.get("github_urls"):
+            print("\n=== Found GitHub Repositories ===")
+            for i, url in enumerate(results["github_urls"][:10], 1):
+                print(f"{i}. {url}")
+            
+            if len(results["github_urls"]) > 10:
+                print(f"...and {len(results['github_urls']) - 10} more.")
+        else:
+            print("No GitHub repositories found.")
+    
+    # Process query from command line
+    elif len(sys.argv) > 1:
+        query = sys.argv[1]
+        print(f"Searching for: {query}")
+        
+        # Parse optional parameters
+        youtube_count = 5
+        web_count = 10
+        use_youtube = True
+        use_web = True
+        use_llm = True
+        threshold = 0.5
+        
+        for i, arg in enumerate(sys.argv[2:]):
+            if arg == "--no-youtube":
+                use_youtube = False
+            elif arg == "--no-web":
+                use_web = False
+            elif arg == "--no-llm":
+                use_llm = False
+            elif arg == "--youtube-count" and i+3 <= len(sys.argv):
+                try:
+                    youtube_count = int(sys.argv[i+3])
+                except ValueError:
+                    pass
+            elif arg == "--web-count" and i+3 <= len(sys.argv):
+                try:
+                    web_count = int(sys.argv[i+3])
+                except ValueError:
+                    pass
+            elif arg == "--threshold" and i+3 <= len(sys.argv):
+                try:
+                    threshold_val = float(sys.argv[i+3])
+                    if 0.0 <= threshold_val <= 1.0:
+                        threshold = threshold_val
+                    else:
+                        print("Threshold must be between 0.0 and 1.0. Using default: 0.5")
+                except ValueError:
+                    print("Invalid threshold format. Using default: 0.5")
+        
+        # Execute search
+        results = search_and_scrape(
+            query=query,
+            youtube_count=youtube_count,
+            web_count=web_count,
+            use_youtube=use_youtube,
+            use_web=use_web,
+            use_llm=use_llm,
+            threshold=threshold
+        )
+        
+        # Print results
+        if results and results.get("github_urls"):
+            print("\n=== Found GitHub Repositories ===")
+            for i, url in enumerate(results["github_urls"][:10], 1):
+                print(f"{i}. {url}")
+            
+            if len(results["github_urls"]) > 10:
+                print(f"...and {len(results['github_urls']) - 10} more.")
+        else:
+            print("No GitHub repositories found.")
+            
+        # Print search statistics
+        if "scrape_success_rate" in results:
+            success_rate = results["scrape_success_rate"] * 100
+            print(f"\nScraping success rate: {success_rate:.1f}%")
+        
+        if "average_relevance" in results:
+            avg_relevance = results["average_relevance"] * 100
+            print(f"Average content relevance: {avg_relevance:.1f}%")
+    
+    else:
+        print("Usage:")
+        print("  python -m utils.search interactive")
+        print("  python -m utils.search \"your search query\"")
+        print("  python -m utils.search \"your search query\" --no-youtube --no-web --youtube-count 3 --web-count 5") 
