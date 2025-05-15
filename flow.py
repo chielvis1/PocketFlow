@@ -38,36 +38,24 @@ def create_repo_analyzer_flow():
     # Create and return flow
     return Flow(start=parse_url_node)
 
-def create_tutorial_generator_flow():
+def create_tutorial_flow():
     """
-    Create a flow for generating a tutorial from a repository.
-    
-    Returns:
-        Flow: The configured tutorial generator flow
+    Create and return the tutorial generation flow (1:1 match with mcp-pipeline reference).
     """
-    # Create nodes
     fetch_repo = FetchRepo()
-    identify_abstractions = IdentifyAbstractions()
-    analyze_relationships = AnalyzeRelationships()
-    order_chapters = OrderChapters()
-    write_chapters = WriteChapters()
+    identify_abstractions = IdentifyAbstractions(max_retries=5, wait=20)
+    analyze_relationships = AnalyzeRelationships(max_retries=5, wait=20)
+    order_chapters = OrderChapters(max_retries=5, wait=20)
+    write_chapters = WriteChapters(max_retries=5, wait=20)
     combine_tutorial = CombineTutorial()
-    
-    # Connect nodes with error handling
-    fetch_repo - "default" >> identify_abstractions
-    fetch_repo - "error" >> AnalysisErrorNode()
-    
-    identify_abstractions - "default" >> analyze_relationships
-    identify_abstractions - "error" >> AnalysisErrorNode()
-    
-    analyze_relationships - "default" >> order_chapters
-    analyze_relationships - "error" >> AnalysisErrorNode()
-    
-    order_chapters - "default" >> write_chapters
-    order_chapters - "error" >> AnalysisErrorNode()
-    
-    write_chapters - "default" >> combine_tutorial
-    write_chapters - "error" >> AnalysisErrorNode()
-    
-    # Create and return flow
-    return Flow(start=fetch_repo) 
+
+    fetch_repo >> identify_abstractions
+    identify_abstractions >> analyze_relationships
+    analyze_relationships >> order_chapters
+    order_chapters >> write_chapters
+    write_chapters >> combine_tutorial
+
+    return Flow(start=fetch_repo)
+
+# Backward compatibility alias
+create_tutorial_generator_flow = create_tutorial_flow 

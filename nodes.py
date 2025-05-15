@@ -7,6 +7,7 @@ This file contains the nodes used in the repository analysis flow.
 from pocketflow import Node
 from typing import Dict, Any, Optional, Tuple, List, Union
 from urllib.parse import urlparse
+import os
 
 class ParseRepositoryURLNode(Node):
     """
@@ -151,40 +152,66 @@ class AnalysisErrorNode(Node):
         print(exec_res)
         return "default"
 
-# Add other node classes from the original file below...
-# Tutorial generation nodes
 class FetchRepo(Node):
     """Fetches a repository from GitHub or a local directory."""
     
     def prep(self, shared):
-        return shared.get("repo_url"), shared.get("local_dir")
+        repo_url = shared.get("repo_url")
+        local_dir = shared.get("local_dir")
+        project_name = shared.get("project_name")
+
+        if not project_name:
+            if repo_url:
+                project_name = repo_url.split('/')[-1].replace('.git', '')
+            else:
+                project_name = os.path.basename(os.path.abspath(local_dir))
+            shared["project_name"] = project_name
+        
+        include_patterns = shared["include_patterns"]
+        exclude_patterns = shared["exclude_patterns"]
+        max_file_size = shared["max_file_size"]
+        
+        return {
+            "repo_url": repo_url,
+            "local_dir": local_dir,
+            "token": shared.get("github_token"),
+            "include_patterns": include_patterns,
+            "exclude_patterns": exclude_patterns,
+            "max_file_size": max_file_size,
+            "use_relative_paths": True
+        }
     
-    def exec(self, inputs):
-        repo_url, local_dir = inputs
-        
-        if local_dir:
-            # Use local repository
-            from utils.crawl_local_files import crawl_local_files
-            return crawl_local_files(local_dir)
-        
-        if repo_url:
-            # Use GitHub repository
+    def exec(self, prep_res):
+        if prep_res["repo_url"]:
+            print(f"Crawling repository: {prep_res['repo_url']}...")
             from utils.crawl_github_files import crawl_github_files
-            from utils.github import get_github_token
-            
-            # Get token from session store
-            github_token = get_github_token()
-            
-            return crawl_github_files(repo_url, token=github_token)
-        
-        return {"error": "No repository source provided"}
+            result = crawl_github_files(
+                repo_url=prep_res["repo_url"],
+                token=prep_res["token"],
+                include_patterns=prep_res["include_patterns"],
+                exclude_patterns=prep_res["exclude_patterns"],
+                max_file_size=prep_res["max_file_size"],
+                use_relative_paths=prep_res["use_relative_paths"]
+            )
+        else:
+            print(f"Crawling directory: {prep_res['local_dir']}...")
+            from utils.crawl_local_files import crawl_local_files
+            result = crawl_local_files(
+                directory=prep_res["local_dir"],
+                include_patterns=prep_res["include_patterns"],
+                exclude_patterns=prep_res["exclude_patterns"],
+                max_file_size=prep_res["max_file_size"],
+                use_relative_paths=prep_res["use_relative_paths"]
+            )
+
+        files_list = list(result.get("files", {}).items())
+        if not files_list:
+            raise ValueError("Failed to fetch files")
+        print(f"Fetched {len(files_list)} files.")
+        return files_list
     
     def post(self, shared, prep_res, exec_res):
-        if "error" in exec_res:
-            shared["error"] = exec_res["error"]
-            return "error"
-            
-        shared["repository_files"] = exec_res
+        shared["files"] = exec_res
         return "default"
 
 # Additional tutorial generation nodes...
@@ -204,12 +231,28 @@ class IdentifyAbstractions(Node):
         
         # Extract content sample and key files
         file_paths = list(files.keys())
-        sample_content = "\n".join([f"File: {path}\n{files[path][:500]}..." for path in file_paths[:10]])
+        sample_content = []
+        
+        # Extract first 500 characters from each file safely
+        for path in file_paths[:10]:
+            file_content = files[path]
+            # Handle different content types safely
+            if isinstance(file_content, str):
+                sample = file_content[:500]
+            elif isinstance(file_content, dict) and "content" in file_content:
+                sample = file_content["content"][:500]
+            else:
+                # For any other type, convert to string first then slice
+                sample = str(file_content)[:500]
+            
+            sample_content.append(f"File: {path}\n{sample}...")
+            
+        sample_text = "\n".join(sample_content)
         
         prompt = f"""
         Analyze the following files from a repository and identify key abstractions, patterns, and concepts:
         
-        {sample_content}
+        {sample_text}
         
         Please identify the key abstractions, patterns, and software concepts present in this codebase.
         Focus on the main architectural elements, design patterns, and core domain models.
@@ -350,6 +393,17 @@ class WriteChapters(Node):
         # Extract chapter titles for the table of contents
         chapter_titles = re.findall(r'^\d+\.\s+(.*?)$', chapters_outline, re.MULTILINE)
         
+        # Safely truncate long texts
+        if isinstance(abstractions, str):
+            abstractions_summary = abstractions[:500]
+        else:
+            abstractions_summary = str(abstractions)[:500]
+            
+        if isinstance(relationships, str):
+            relationships_summary = relationships[:500]
+        else:
+            relationships_summary = str(relationships)[:500]
+        
         # Write each chapter
         chapters = []
         for i, title in enumerate(chapter_titles, 1):
@@ -357,7 +411,7 @@ class WriteChapters(Node):
             chapter_content_match = re.search(f"{i}\\. {re.escape(title)}(.*?)(?=\\d+\\. |$)", 
                                              chapters_outline, re.DOTALL)
             chapter_description = chapter_content_match.group(1).strip() if chapter_content_match else ""
-            
+
             prompt = f"""
             Write Chapter {i}: {title} for a tutorial in {language}.
             
@@ -365,8 +419,8 @@ class WriteChapters(Node):
             {chapter_description}
             
             Repository Context:
-            - Abstractions: {abstractions[:500]}...
-            - Relationships: {relationships[:500]}...
+            - Abstractions: {abstractions_summary}...
+            - Relationships: {relationships_summary}...
             
             The chapter should:
             1. Be well-structured with clear headings (use markdown format with # for headers)

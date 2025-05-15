@@ -379,6 +379,135 @@ def ensure_github_token() -> str:
     
     return token
 
+@log_execution_time("repo_metadata_analysis")
+def analyze_repository_metadata(repo_url: str) -> Dict[str, Any]:
+    """
+    Analyzes repository metadata using only GitHub API (no LLM).
+    Extracts information about files, keywords, images, and maintenance status.
+    
+    Args:
+        repo_url: GitHub repository URL
+        
+    Returns:
+        Repository metadata and analysis
+    """
+    # Ensure GitHub token is available
+    ensure_github_token()
+    
+    # Extract username and repo name from URL
+    parsed_url = urlparse(repo_url)
+    path_parts = parsed_url.path.strip('/').split('/')
+    
+    if len(path_parts) < 2:
+        raise ValueError(f"Invalid GitHub URL: {repo_url}")
+    
+    username, repo_name = path_parts[0], path_parts[1]
+    
+    try:
+        import requests
+    except ImportError:
+        raise ImportError("Please install requests: pip install requests")
+    
+    # Get GitHub token from session store
+    github_token = get_github_token()
+    
+    # Set up headers with token if available
+    headers = {}
+    if github_token:
+        headers["Authorization"] = f"token {github_token}"
+    
+    # Get repository metadata
+    api_url = f"https://api.github.com/repos/{username}/{repo_name}"
+    response = requests.get(api_url, headers=headers)
+    
+    if response.status_code != 200:
+        return {
+            "error": f"Failed to fetch repository data: {response.status_code}",
+            "url": repo_url
+        }
+    
+    repo_data = response.json()
+    
+    # Extract basic metrics
+    stars = repo_data.get("stargazers_count", 0)
+    forks = repo_data.get("forks_count", 0)
+    issues = repo_data.get("open_issues_count", 0)
+    size = repo_data.get("size", 0)  # Size in KB
+    last_update = repo_data.get("updated_at", "")
+    
+    # Get file structure to analyze content
+    contents_url = f"https://api.github.com/repos/{username}/{repo_name}/git/trees/master?recursive=1"
+    contents_response = requests.get(contents_url, headers=headers)
+    
+    file_count = 0
+    has_images = False
+    file_extensions = {}
+    image_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico']
+    
+    if contents_response.status_code == 200:
+        tree = contents_response.json().get("tree", [])
+        
+        # Analyze file types
+        for item in tree:
+            if item.get("type") == "blob":
+                file_count += 1
+                path = item.get("path", "")
+                
+                # Track file extensions
+                _, ext = os.path.splitext(path.lower())
+                if ext:
+                    file_extensions[ext] = file_extensions.get(ext, 0) + 1
+                
+                # Check for images
+                if any(path.lower().endswith(img_ext) for img_ext in image_extensions):
+                    has_images = True
+    
+    # Get languages
+    languages_url = f"https://api.github.com/repos/{username}/{repo_name}/languages"
+    lang_response = requests.get(languages_url, headers=headers)
+    languages = lang_response.json() if lang_response.status_code == 200 else {}
+    
+    # Evaluate maintenance status based on:
+    # 1. Recent updates
+    # 2. Ratio of open issues to stars
+    # 3. Recent commits
+    
+    from datetime import datetime
+    last_update_date = datetime.strptime(last_update, "%Y-%m-%dT%H:%M:%SZ")
+    days_since_update = (datetime.now() - last_update_date).days
+    
+    if days_since_update < 30:
+        maintenance_status = "Active"
+    elif days_since_update < 180:
+        maintenance_status = "Maintained"
+    elif days_since_update < 365:
+        maintenance_status = "Occasional Updates"
+    else:
+        maintenance_status = "Inactive"
+    
+    # Adjust based on issues ratio (if high number of open issues relative to stars, might indicate poor maintenance)
+    if stars > 0:
+        issues_ratio = issues / stars
+        if issues_ratio > 0.5 and issues > 10:
+            maintenance_status = "High Issue Backlog"
+    
+    return {
+        "url": repo_url,
+        "name": repo_name,
+        "owner": username,
+        "stars": stars,
+        "forks": forks,
+        "issues": issues,
+        "last_update": last_update,
+        "days_since_update": days_since_update,
+        "file_count": file_count,
+        "has_images": has_images,
+        "file_extensions": file_extensions,
+        "languages": languages,
+        "size_kb": size,
+        "maintenance_status": maintenance_status
+    }
+
 if __name__ == "__main__":
     # Test extracting GitHub URLs
     test_text = """

@@ -10,12 +10,12 @@ import sys
 import os
 
 from pocketflow import Flow
-from flow import create_repo_analyzer_flow, create_tutorial_generator_flow
+from flow import create_repo_analyzer_flow, create_tutorial_flow
 from utils.monitoring import configure_logging
 from utils.data_processing import get_user_selection
 from utils.llm import call_llm, setup_llm_provider, setup_llm_provider_with_params
 from utils.search import interactive_search
-from utils.github import set_github_token, ensure_github_token
+from utils.github import set_github_token, ensure_github_token, analyze_repository_metadata
 from nodes import AnalyzeRepositoryNode
 
 def parse_args():
@@ -198,32 +198,84 @@ def run_agent(query=None, verbose=False, provider=None, model=None, interactive=
             
             if len(github_urls) > 10:
                 print(f"...and {len(github_urls) - 10} more")
-                
-            # Allow user to select a repository for detailed analysis
+            
+            # Allow user to select repositories for detailed analysis
             if len(github_urls) > 0:
-                if input("\nAnalyze a repository in detail? (y/n): ").lower() == 'y':
-                    selected_index = None
-                    while selected_index is None:
-                        try:
-                            idx = int(input(f"Enter repository number (1-{len(github_urls)}): "))
-                            if 1 <= idx <= len(github_urls):
-                                selected_index = idx - 1
-                            else:
-                                print(f"Please enter a number between 1 and {len(github_urls)}")
-                        except ValueError:
-                            print("Please enter a valid number")
+                print("\n=== Found GitHub Repositories ===")
+                for i, url in enumerate(github_urls, 1):
+                    print(f"{i}. {url}")
+                
+                if input("\nWould you like to analyze repositories in detail? (y/n): ").lower() == 'y':
+                    # Show selection instructions
+                    print("\nSelect repositories to analyze:")
+                    print("- Enter numbers separated by commas (e.g. '1,3,5')")
+                    print("- Enter 'all' to analyze all repositories")
                     
-                    # Store selected repository
-                    shared["selected_repo"] = github_urls[selected_index]
+                    selection = input("Enter your selection: ").strip().lower()
+                    
+                    selected_repos = []
+                    if selection == 'all':
+                        # Use all repositories
+                        selected_repos = github_urls
+                        print(f"Selected all {len(github_urls)} repositories.")
+                    else:
+                        # Parse selection for multiple repositories
+                        try:
+                            selected_indices = [int(idx.strip()) for idx in selection.split(',') if idx.strip()]
+                            
+                            # Validate all indices
+                            for idx in selected_indices:
+                                if 1 <= idx <= len(github_urls):
+                                    selected_repos.append(github_urls[idx-1])
+                                else:
+                                    print(f"Ignoring invalid selection {idx} (out of range)")
+                            
+                            if not selected_repos:
+                                print("No valid repositories selected.")
+                                return shared
+                            
+                            print(f"Selected {len(selected_repos)} repositories for analysis.")
+                        except ValueError:
+                            print("Invalid selection format. Please use numbers separated by commas.")
+                            return shared
+                    
+                    # Store selected repositories in shared dictionary
+                    shared["selected_repos"] = selected_repos
                     
                     # Ensure GitHub token is available for repo analysis
                     ensure_github_token()
                     
                     # Run detailed analysis
-                    analysis_result = handle_user_selection(shared)
-                    if analysis_result:
+                    analysis_results = handle_user_selection(shared)
+                    
+                    if analysis_results:
                         print("\n=== Repository Analysis Complete ===")
-                        print(f"Analysis for: {shared['selected_repo']}")
+                        
+                        # Ask if user wants to create a tutorial from one of the analyzed repos
+                        print("\nWould you like to generate a tutorial from one of these repositories?")
+                        repo_choice = input("Enter repository number or 'n' to skip: ").strip().lower()
+                        
+                        if repo_choice != 'n':
+                            try:
+                                idx = int(repo_choice)
+                                if 1 <= idx <= len(github_urls):
+                                    selected_repo = github_urls[idx-1]
+                                    print(f"\nGenerating tutorial for: {selected_repo}")
+                                    
+                                    # Call tutorial generator with the selected repository
+                                    tutorial_results = generate_tutorial(
+                                        repo_url=selected_repo,
+                                        output_dir="tutorial",
+                                        language="english"
+                                    )
+                                    
+                                    # Store tutorial results in shared data
+                                    if tutorial_results:
+                                        shared["tutorial_results"] = tutorial_results
+                                else:
+                                    print(f"Invalid repository number. Skipping tutorial generation.")
+                            except ValueError:
+                                print("Invalid selection. Skipping tutorial generation.")
         else:
             print("\nNo GitHub repositories found matching your criteria.")
     else:
@@ -249,7 +301,7 @@ def generate_tutorial(repo_url=None, local_dir=None, output_dir='tutorial',
         Dictionary with tutorial information
     """
     if not repo_url and not local_dir:
-        print("Error: Either --repo or --local-dir must be specified")
+        print("Error: Either repo_url or local_dir must be specified")
         return None
     
     # Configure logging
@@ -268,22 +320,57 @@ def generate_tutorial(repo_url=None, local_dir=None, output_dir='tutorial',
             print(f"Warning: Failed to set up specified LLM provider: {e}")
             print("Will use default or interactive LLM setup when needed")
     
-    # Create shared store for data
+    # Default file patterns
+    DEFAULT_INCLUDE_PATTERNS = {
+        "*.py", "*.js", "*.jsx", "*.ts", "*.tsx", "*.go", "*.java", "*.pyi", "*.pyx",
+        "*.c", "*.cc", "*.cpp", "*.h", "*.md", "*.rst", "Dockerfile",
+        "Makefile", "*.yaml", "*.yml",
+    }
+
+    DEFAULT_EXCLUDE_PATTERNS = {
+        "venv/*", ".venv/*", "*test*", "tests/*", "docs/*", "examples/*", "v1/*",
+        "dist/*", "build/*", "experimental/*", "deprecated/*",
+        "legacy/*", ".git/*", ".github/*", ".next/*", ".vscode/*", "obj/*", "bin/*", "node_modules/*", "*.log"
+    }
+    
+    # Get project name from URL or directory
+    project_name = None
+    if repo_url:
+        project_name = repo_url.split('/')[-1].replace('.git', '')
+    elif local_dir:
+        project_name = os.path.basename(os.path.abspath(local_dir))
+    
+    # Create shared store for data - match mcp-pipeline's structure exactly
     shared = {
         "repo_url": repo_url,
         "local_dir": local_dir, 
+        "project_name": project_name,
+        "github_token": github_token,
         "tutorial_output_dir": output_dir,
         "language": language,
-        "timeout": 300  # 5 minutes timeout for operations
+        
+        # Add include/exclude patterns and max file size
+        "include_patterns": DEFAULT_INCLUDE_PATTERNS,
+        "exclude_patterns": DEFAULT_EXCLUDE_PATTERNS,
+        "max_file_size": 100000,  # 100KB matches mcp-pipeline default
+        
+        # Initialize empty containers for outputs
+        "files": [],
+        "abstractions": [],
+        "relationships": {},
+        "chapter_order": [],
+        "chapters": [],
+        "final_output_dir": None
     }
     
     # Show status message
     print(f"\nStarting tutorial generation for {'repository' if repo_url else 'local directory'}...")
+    print(f"Project name: {project_name}")
     print(f"Output will be saved to: {os.path.abspath(output_dir)}")
     print(f"Tutorial language: {language}")
     
     # Create and run tutorial generator flow
-    tutorial_flow = create_tutorial_generator_flow()
+    tutorial_flow = create_tutorial_flow()
     try:
         tutorial_flow.run(shared)
         
@@ -309,29 +396,61 @@ def generate_tutorial(repo_url=None, local_dir=None, output_dir='tutorial',
 def handle_user_selection(shared):
     """
     Handle user selection of repositories and run detailed analysis.
+    Uses API-only analysis without LLM to provide repository metadata.
+    Supports selecting multiple repositories or all repositories.
     
     Args:
         shared: The shared data dictionary
     
     Returns:
-        The analysis results
+        Dictionary of analysis results by repository URL
     """
-    selected_repo = shared.get("selected_repo")
-    if not selected_repo:
-        print("No repository selected.")
+    # Get the list of repositories to analyze
+    selected_repos = shared.get("selected_repos", [])
+    
+    # Fallback to single repo selection if using the old format
+    if not selected_repos and shared.get("selected_repo"):
+        selected_repos = [shared.get("selected_repo")]
+        
+    if not selected_repos:
+        # If we still have no repos, use all github_urls if available
+        selected_repos = shared.get("github_urls", [])
+        
+    if not selected_repos:
+        print("No repositories available for analysis.")
         return None
     
-    # Create the analysis flow
-    analyze_repo = AnalyzeRepositoryNode()
+    # Store analysis results
+    all_results = {}
     
-    # Create single-node flow 
-    analysis_flow = Flow(start=analyze_repo)
+    # Loop through and analyze each selected repository
+    for repo_url in selected_repos:
+        try:
+            print(f"\nAnalyzing repository: {repo_url}")
+            
+            # Use API-only analysis
+            repo_metadata = analyze_repository_metadata(repo_url)
+            
+            # Store the results
+            all_results[repo_url] = repo_metadata
+            
+            # Print a summary of the findings
+            print(f"\nRepository: {repo_metadata.get('name')} (by {repo_metadata.get('owner')})")
+            print(f"Stars: {repo_metadata.get('stars')} | Forks: {repo_metadata.get('forks')}")
+            print(f"Languages: {', '.join(list(repo_metadata.get('languages', {}).keys())[:5])}")
+            print(f"Files: {repo_metadata.get('file_count')} | Size: {repo_metadata.get('size_kb')} KB")
+            print(f"Last updated: {repo_metadata.get('days_since_update')} days ago")
+            print(f"Maintenance status: {repo_metadata.get('maintenance_status')}")
+            print(f"Has images: {'Yes' if repo_metadata.get('has_images') else 'No'}")
+            
+        except Exception as e:
+            print(f"Error analyzing repository {repo_url}: {str(e)}")
     
-    # Run analysis
-    analysis_flow.run(shared)
+    # Store the results in shared data for further use
+    shared["repo_analysis"] = all_results
     
-    # Return the result
-    return shared.get("analysis_results")
+    # Return results for further processing
+    return all_results
 
 def main():
     """Main entry point."""

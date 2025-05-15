@@ -555,4 +555,66 @@ This implementation carefully replaces SerpAPI with two specialized tools while 
 
 By maintaining the same interface and behavior while enhancing the underlying implementation, we ensure a seamless transition from SerpAPI to the new tools. The advanced GitHub repository extraction capabilities will significantly improve the system's ability to discover relevant repositories without requiring structural changes to the codebase.
 
-The added error handling mechanisms, particularly for 403 Forbidden responses, with fixed 5-second delays between retries, make the system more resilient against common web scraping challenges. This ensures a more reliable user experience even when faced with websites that implement scraping protections. 
+The added error handling mechanisms, particularly for 403 Forbidden responses, with fixed 5-second delays between retries, make the system more resilient against common web scraping challenges. This ensures a more reliable user experience even when faced with websites that implement scraping protections.
+
+# FetchRepo Node Performance Improvement Specification
+
+## Current Issues
+
+1. **Performance Issue**: The `FetchRepo` node is taking too long to execute, as indicated by the test results.
+
+2. **Implementation Differences**: After comparing our implementation with the mcp-pipeline reference repository, several key differences were identified:
+
+   - **Fallback Strategy**: Our implementation lacks efficient fallback mechanisms when GitHub API crawling fails or is too slow.
+   - **Pre-check Optimization**: The reference repository checks the total file count via tree API and uses a more efficient cloning approach for larger repositories.
+   - **Clone Optimization**: The reference implementation uses a persistent cache directory for clones, which can be reused across runs.
+   - **Error Handling**: The error handling in our crawl_github_files.py is less robust than the reference implementation.
+
+3. **Specific Bottlenecks**:
+   - No early detection of large repositories before API crawling
+   - No caching of cloned repositories
+   - Inefficient fallback from API to clone
+   - Redundant API calls for repository metadata
+
+## Improvement Plan
+
+1. **Implement Intelligent Fallback Strategy**:
+   - Add pre-check using GitHub tree API to quickly count total files
+   - Automatically fallback to efficient local git clone for repositories with more than 1000 files
+   - Implement persistent clone caching to avoid re-cloning repositories that have been fetched before
+
+2. **Optimize GitHub API Requests**:
+   - Reduce API calls by batching requests where possible
+   - Improve error handling with more specific status code handling
+   - Enhance retry logic with better backoff strategy
+
+3. **Caching Improvements**:
+   - Create a persistent cache directory for cloned repositories
+   - Implement proper cache invalidation for repositories that have been updated
+   - Use shallow clones with depth=1 for faster cloning
+
+4. **Code Structure Improvements**:
+   - Modularize the code better to avoid code duplication
+   - Add more detailed logging for better debugging
+   - Improve error messages to be more helpful
+
+## Implementation Approach
+
+1. **Update crawl_github_files.py**:
+   - Add pre-check section to check repository size via tree API
+   - Implement persistent clone caching logic similar to reference implementation
+   - Improve error handling with specific messages for different error scenarios
+
+2. **Update FetchRepo Node**:
+   - Ensure the node passes the right parameters to crawl_github_files
+   - Add better timing and performance logging
+   - Make sure all errors are handled properly and meaningful messages are returned
+
+3. **Testing**:
+   - Run test_fetch_repo.py after implementation to verify performance improvement
+   - Compare execution times before and after optimization
+   - Ensure all functionality still works correctly
+
+4. **Documentation**:
+   - Update comments to explain the optimization strategy
+   - Add notes about caching behavior for users 
