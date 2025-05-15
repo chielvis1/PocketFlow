@@ -162,124 +162,141 @@ def run_agent(query=None, verbose=False, provider=None, model=None, interactive=
     # Create shared store for data
     shared = {}
     
-    # First, collect inputs with interactive search
-    # This only collects inputs but doesn't process them yet
-    from utils.search import interactive_search
-    search_results = interactive_search(initial_query=query)
-    
-    # Now process the search results
-    if search_results and "github_urls" not in search_results:
-        # Process the query inputs with LLM
-        from utils.search import search_and_scrape
-        final_results = search_and_scrape(
-            query=search_results.get("query", ""),
-            keywords=search_results.get("keywords", []),
-            tech_stack=search_results.get("tech_stack", []),
-            features=search_results.get("features", []),
-            youtube_count=search_results.get("youtube_count", youtube_count),
-            web_count=search_results.get("web_count", web_count),
-            use_youtube=search_results.get("use_youtube", use_youtube),
-            use_web=search_results.get("use_web", use_web),
-            use_llm=search_results.get("use_llm", True),
-            setup_llm_first=not llm_configured,  # Only skip LLM setup if we've already done it
-            threshold=search_results.get("relevance_threshold", relevance_threshold)  # Use threshold from interactive search or the CLI parameter
-        )
+    try:
+        # First, collect inputs with interactive search
+        # This only collects inputs but doesn't process them yet
+        from utils.search import interactive_search
+        search_results = interactive_search(initial_query=query)
         
-        # Store final results in shared store
-        shared.update(final_results)
-        
-        # Extract GitHub URLs for display
-        github_urls = final_results.get("github_urls", [])
-        
-        if github_urls:
-            print(f"\nFound {len(github_urls)} GitHub repositories:")
-            for i, url in enumerate(github_urls[:10], 1):
-                print(f"{i}. {url}")
+        # Now process the search results
+        if search_results and "github_urls" not in search_results:
+            # Process the query inputs with LLM
+            from utils.search import search_and_scrape
             
-            if len(github_urls) > 10:
-                print(f"...and {len(github_urls) - 10} more")
-            
-            # Allow user to select repositories for detailed analysis
-            if len(github_urls) > 0:
-                print("\n=== Found GitHub Repositories ===")
-                for i, url in enumerate(github_urls, 1):
-                    print(f"{i}. {url}")
+            try:
+                final_results = search_and_scrape(
+                    query=search_results.get("query", ""),
+                    keywords=search_results.get("keywords", []),
+                    tech_stack=search_results.get("tech_stack", []),
+                    features=search_results.get("features", []),
+                    youtube_count=search_results.get("youtube_count", youtube_count),
+                    web_count=search_results.get("web_count", web_count),
+                    use_youtube=search_results.get("use_youtube", use_youtube),
+                    use_web=search_results.get("use_web", use_web),
+                    use_llm=search_results.get("use_llm", True),
+                    setup_llm_first=not llm_configured,  # Only skip LLM setup if we've already done it
+                    threshold=search_results.get("relevance_threshold", relevance_threshold)  # Use threshold from interactive search or the CLI parameter
+                )
                 
-                if input("\nWould you like to analyze repositories in detail? (y/n): ").lower() == 'y':
-                    # Show selection instructions
-                    print("\nSelect repositories to analyze:")
-                    print("- Enter numbers separated by commas (e.g. '1,3,5')")
-                    print("- Enter 'all' to analyze all repositories")
+                # Store final results in shared store
+                shared.update(final_results)
+                
+                # Extract GitHub URLs for display
+                github_urls = final_results.get("github_urls", [])
+                
+                if github_urls:
+                    print(f"\nFound {len(github_urls)} GitHub repositories:")
+                    for i, url in enumerate(github_urls[:10], 1):
+                        print(f"{i}. {url}")
                     
-                    selection = input("Enter your selection: ").strip().lower()
+                    if len(github_urls) > 10:
+                        print(f"...and {len(github_urls) - 10} more")
                     
-                    selected_repos = []
-                    if selection == 'all':
-                        # Use all repositories
-                        selected_repos = github_urls
-                        print(f"Selected all {len(github_urls)} repositories.")
-                    else:
-                        # Parse selection for multiple repositories
-                        try:
-                            selected_indices = [int(idx.strip()) for idx in selection.split(',') if idx.strip()]
-                            
-                            # Validate all indices
-                            for idx in selected_indices:
-                                if 1 <= idx <= len(github_urls):
-                                    selected_repos.append(github_urls[idx-1])
-                                else:
-                                    print(f"Ignoring invalid selection {idx} (out of range)")
-                            
-                            if not selected_repos:
-                                print("No valid repositories selected.")
-                                return shared
-                            
-                            print(f"Selected {len(selected_repos)} repositories for analysis.")
-                        except ValueError:
-                            print("Invalid selection format. Please use numbers separated by commas.")
-                            return shared
-                    
-                    # Store selected repositories in shared dictionary
-                    shared["selected_repos"] = selected_repos
-                    
-                    # Ensure GitHub token is available for repo analysis
-                    ensure_github_token()
-                    
-                    # Run detailed analysis
-                    analysis_results = handle_user_selection(shared)
-                    
-                    if analysis_results:
-                        print("\n=== Repository Analysis Complete ===")
+                    # Allow user to select repositories for detailed analysis
+                    if len(github_urls) > 0:
+                        print("\n=== Found GitHub Repositories ===")
+                        for i, url in enumerate(github_urls, 1):
+                            print(f"{i}. {url}")
                         
-                        # Ask if user wants to create a tutorial from one of the analyzed repos
-                        print("\nWould you like to generate a tutorial from one of these repositories?")
-                        repo_choice = input("Enter repository number or 'n' to skip: ").strip().lower()
-                        
-                        if repo_choice != 'n':
-                            try:
-                                idx = int(repo_choice)
-                                if 1 <= idx <= len(github_urls):
-                                    selected_repo = github_urls[idx-1]
-                                    print(f"\nGenerating tutorial for: {selected_repo}")
+                        if input("\nWould you like to analyze repositories in detail? (y/n): ").lower() == 'y':
+                            # Show selection instructions
+                            print("\nSelect repositories to analyze:")
+                            print("- Enter numbers separated by commas (e.g. '1,3,5')")
+                            print("- Enter 'all' to analyze all repositories")
+                            
+                            selection = input("Enter your selection: ").strip().lower()
+                            
+                            selected_repos = []
+                            if selection == 'all':
+                                # Use all repositories
+                                selected_repos = github_urls
+                                print(f"Selected all {len(github_urls)} repositories.")
+                            else:
+                                # Parse selection for multiple repositories
+                                try:
+                                    selected_indices = [int(idx.strip()) for idx in selection.split(',') if idx.strip()]
                                     
-                                    # Call tutorial generator with the selected repository
-                                    tutorial_results = generate_tutorial(
-                                        repo_url=selected_repo,
-                                        output_dir="tutorial",
-                                        language="english"
-                                    )
+                                    # Validate all indices
+                                    for idx in selected_indices:
+                                        if 1 <= idx <= len(github_urls):
+                                            selected_repos.append(github_urls[idx-1])
+                                        else:
+                                            print(f"Ignoring invalid selection {idx} (out of range)")
                                     
-                                    # Store tutorial results in shared data
-                                    if tutorial_results:
-                                        shared["tutorial_results"] = tutorial_results
-                                else:
-                                    print(f"Invalid repository number. Skipping tutorial generation.")
-                            except ValueError:
-                                print("Invalid selection. Skipping tutorial generation.")
+                                    if not selected_repos:
+                                        print("No valid repositories selected.")
+                                        return shared
+                                    
+                                    print(f"Selected {len(selected_repos)} repositories for analysis.")
+                                except ValueError:
+                                    print("Invalid selection format. Please use numbers separated by commas.")
+                                    return shared
+                            
+                            # Store selected repositories in shared dictionary
+                            shared["selected_repos"] = selected_repos
+                            
+                            # Ensure GitHub token is available for repo analysis
+                            ensure_github_token()
+                            
+                            # Run detailed analysis
+                            analysis_results = handle_user_selection(shared)
+                            
+                            if analysis_results:
+                                print("\n=== Repository Analysis Complete ===")
+                                
+                                # Ask if user wants to create a tutorial from one of the analyzed repos
+                                print("\nWould you like to generate a tutorial from one of these repositories?")
+                                repo_choice = input("Enter repository number or 'n' to skip: ").strip().lower()
+                                
+                                if repo_choice != 'n':
+                                    try:
+                                        idx = int(repo_choice)
+                                        if 1 <= idx <= len(github_urls):
+                                            selected_repo = github_urls[idx-1]
+                                            print(f"\nGenerating tutorial for: {selected_repo}")
+                                            
+                                            # Call tutorial generator with the selected repository
+                                            tutorial_results = generate_tutorial(
+                                                repo_url=selected_repo,
+                                                output_dir="tutorial",
+                                                language="english"
+                                            )
+                                            
+                                            # Store tutorial results in shared data
+                                            if tutorial_results:
+                                                shared["tutorial_results"] = tutorial_results
+                                        else:
+                                            print(f"Invalid repository number. Skipping tutorial generation.")
+                                    except ValueError:
+                                        print("Invalid selection. Skipping tutorial generation.")
+                else:
+                    print("\nNo GitHub repositories found matching your criteria.")
+            except KeyboardInterrupt:
+                print("\nSearch process interrupted by user.")
+                return shared
+            except Exception as e:
+                print(f"\nError during search: {e}")
+                return shared
         else:
-            print("\nNo GitHub repositories found matching your criteria.")
-    else:
-        print("\nSearch failed or was canceled.")
+            if search_results and "github_urls" in search_results:
+                print("\nSearch completed with direct results.")
+                shared.update(search_results)
+            else:
+                print("\nSearch failed or was canceled.")
+    except KeyboardInterrupt:
+        print("\nProcess interrupted by user.")
+    except Exception as e:
+        print(f"\nUnexpected error: {e}")
     
     return shared
 

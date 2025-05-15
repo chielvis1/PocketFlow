@@ -156,6 +156,9 @@ class FetchRepo(Node):
     """Fetches a repository from GitHub or a local directory."""
     
     def prep(self, shared):
+        # Set current stage
+        shared["current_stage"] = "fetch"
+        
         repo_url = shared.get("repo_url")
         local_dir = shared.get("local_dir")
         project_name = shared.get("project_name")
@@ -166,6 +169,23 @@ class FetchRepo(Node):
             else:
                 project_name = os.path.basename(os.path.abspath(local_dir))
             shared["project_name"] = project_name
+        
+        # Ensure include/exclude patterns are in shared store
+        if "include_patterns" not in shared:
+            shared["include_patterns"] = {
+                "*.py", "*.js", "*.jsx", "*.ts", "*.tsx", "*.go", "*.java",
+                "*.c", "*.cc", "*.cpp", "*.h", "*.md", "*.rst", "Dockerfile",
+                "Makefile", "*.yaml", "*.yml"
+            }
+            
+        if "exclude_patterns" not in shared:
+            shared["exclude_patterns"] = {
+                "venv/*", ".venv/*", "*test*", "tests/*", "docs/*", "examples/*",
+                "dist/*", "build/*", "node_modules/*", ".git/*", ".github/*"
+            }
+            
+        if "max_file_size" not in shared:
+            shared["max_file_size"] = 100000  # 100KB default
         
         include_patterns = shared["include_patterns"]
         exclude_patterns = shared["exclude_patterns"]
@@ -182,37 +202,78 @@ class FetchRepo(Node):
         }
     
     def exec(self, prep_res):
-        if prep_res["repo_url"]:
-            print(f"Crawling repository: {prep_res['repo_url']}...")
-            from utils.crawl_github_files import crawl_github_files
-            result = crawl_github_files(
-                repo_url=prep_res["repo_url"],
-                token=prep_res["token"],
-                include_patterns=prep_res["include_patterns"],
-                exclude_patterns=prep_res["exclude_patterns"],
-                max_file_size=prep_res["max_file_size"],
-                use_relative_paths=prep_res["use_relative_paths"]
-            )
-        else:
-            print(f"Crawling directory: {prep_res['local_dir']}...")
-            from utils.crawl_local_files import crawl_local_files
-            result = crawl_local_files(
-                directory=prep_res["local_dir"],
-                include_patterns=prep_res["include_patterns"],
-                exclude_patterns=prep_res["exclude_patterns"],
-                max_file_size=prep_res["max_file_size"],
-                use_relative_paths=prep_res["use_relative_paths"]
-            )
+        if not prep_res["repo_url"] and not prep_res["local_dir"]:
+            return {"error": "No repository URL or local directory provided"}
+            
+        try:
+            if prep_res["repo_url"]:
+                print(f"Crawling repository: {prep_res['repo_url']}...")
+                from utils.crawl_github_files import crawl_github_files
+                result = crawl_github_files(
+                    repo_url=prep_res["repo_url"],
+                    token=prep_res["token"],
+                    include_patterns=prep_res["include_patterns"],
+                    exclude_patterns=prep_res["exclude_patterns"],
+                    max_file_size=prep_res["max_file_size"],
+                    use_relative_paths=prep_res["use_relative_paths"]
+                )
+            else:
+                print(f"Crawling directory: {prep_res['local_dir']}...")
+                from utils.crawl_local_files import crawl_local_files
+                result = crawl_local_files(
+                    directory=prep_res["local_dir"],
+                    include_patterns=prep_res["include_patterns"],
+                    exclude_patterns=prep_res["exclude_patterns"],
+                    max_file_size=prep_res["max_file_size"],
+                    use_relative_paths=prep_res["use_relative_paths"]
+                )
 
-        files_list = list(result.get("files", {}).items())
-        if not files_list:
-            raise ValueError("Failed to fetch files")
-        print(f"Fetched {len(files_list)} files.")
-        return files_list
+            # Validate result structure
+            if not isinstance(result, dict):
+                return {"error": f"Invalid result from crawler: expected dict, got {type(result)}"}
+                
+            if "files" not in result:
+                return {"error": "No 'files' key in crawler result"}
+                
+            # Convert to list of (path, content) tuples for consistent handling
+            files_dict = result.get("files", {})
+            if not files_dict:
+                return {"error": "No files found in repository"}
+                
+            files_list = list(files_dict.items())
+            print(f"Fetched {len(files_list)} files.")
+            
+            # Add repository stats to the result
+            return {
+                "files": files_list,
+                "file_count": len(files_list),
+                "stats": result.get("stats", {})
+            }
+        except Exception as e:
+            return {"error": f"Error fetching repository: {str(e)}"}
     
     def post(self, shared, prep_res, exec_res):
-        shared["files"] = exec_res
+        if "error" in exec_res:
+            shared["error"] = exec_res["error"]
+            return "error"
+            
+        # Store files in shared with the correct key
+        shared["files"] = exec_res["files"]
+        # Also store in repository_files key which is expected by subsequent nodes
+        shared["repository_files"] = dict(exec_res["files"])
+        
+        # Store additional metadata
+        shared["file_count"] = exec_res["file_count"]
+        if "stats" in exec_res:
+            shared["repo_stats"] = exec_res["stats"]
+            
+        print(f"Repository fetched successfully with {exec_res['file_count']} files.")
         return "default"
+    
+    def exec_fallback(self, prep_res, exc):
+        error_msg = f"Error fetching repository: {str(exc)}"
+        print(error_msg)
+        return {"error": error_msg}
 
 # Additional tutorial generation nodes...
 # These are typically found in the original nodes.py but can be added as needed
@@ -221,9 +282,18 @@ class IdentifyAbstractions(Node):
     """Identifies key abstractions, patterns, and concepts in the repository."""
     
     def prep(self, shared):
-        return shared.get("repository_files")
+        print(f"IdentifyAbstractions prep - repository_files type: {type(shared.get('repository_files'))}")
+        print(f"IdentifyAbstractions prep - repository_files item count: {len(shared.get('repository_files', {}))}")
+        
+        repo_files = shared.get("repository_files")
+        if not repo_files:
+            print("ERROR: repository_files is empty or not set!")
+            
+        return repo_files
     
     def exec(self, files):
+        print(f"IdentifyAbstractions exec - files type: {type(files)}")
+        
         if not files:
             return {"error": "No repository files provided"}
         
@@ -231,6 +301,8 @@ class IdentifyAbstractions(Node):
         
         # Extract content sample and key files
         file_paths = list(files.keys())
+        print(f"IdentifyAbstractions exec - file paths: {file_paths[:5]}...")
+        
         sample_content = []
         
         # Extract first 500 characters from each file safely
@@ -249,6 +321,8 @@ class IdentifyAbstractions(Node):
             
         sample_text = "\n".join(sample_content)
         
+        print("IdentifyAbstractions exec - calling LLM")
+        
         prompt = f"""
         Analyze the following files from a repository and identify key abstractions, patterns, and concepts:
         
@@ -262,6 +336,8 @@ class IdentifyAbstractions(Node):
         return {"abstractions": analysis, "file_count": len(files)}
     
     def post(self, shared, prep_res, exec_res):
+        print(f"IdentifyAbstractions post - exec_res keys: {exec_res.keys() if isinstance(exec_res, dict) else 'not a dict'}")
+        
         if "error" in exec_res:
             shared["error"] = exec_res["error"]
             return "error"
@@ -404,6 +480,55 @@ class WriteChapters(Node):
         else:
             relationships_summary = str(relationships)[:500]
         
+        # Function to sanitize filenames
+        def sanitize_filename(title, chapter_number):
+            """
+            Convert a chapter title to a valid filename.
+            
+            Args:
+                title: The chapter title
+                chapter_number: The chapter number
+                
+            Returns:
+                A sanitized filename
+            """
+            import re
+            import unicodedata
+            
+            # Normalize unicode characters
+            normalized = unicodedata.normalize('NFKD', title)
+            # Remove accents
+            normalized = ''.join([c for c in normalized if not unicodedata.combining(c)])
+            
+            # Replace spaces and special characters with underscores
+            sanitized = re.sub(r'[^\w\-\.]', '_', normalized)
+            
+            # Replace multiple consecutive underscores with a single one
+            sanitized = re.sub(r'_+', '_', sanitized)
+            
+            # Remove common markdown/code file extensions that might be in the title
+            sanitized = re.sub(r'\.(md|py|js|jsx|ts|tsx|json|yaml|yml)$', '', sanitized, flags=re.IGNORECASE)
+            
+            # Remove trailing underscores
+            sanitized = sanitized.rstrip('_')
+            
+            # Ensure filename starts with chapter number
+            if not sanitized.startswith(f"chapter_{chapter_number:02d}"):
+                sanitized = f"chapter_{chapter_number:02d}_{sanitized}"
+            
+            # If the sanitized name somehow became empty, use a default
+            if sanitized == "" or sanitized.isspace():
+                sanitized = f"chapter_{chapter_number:02d}"
+            
+            # Ensure filename isn't too long for file systems (most limit around 255)
+            if len(sanitized) > 200:
+                sanitized = sanitized[:197] + "..."
+            
+            # Final check for trailing underscores
+            sanitized = sanitized.rstrip('_')
+            
+            return sanitized + ".md"
+        
         # Write each chapter
         chapters = []
         for i, title in enumerate(chapter_titles, 1):
@@ -435,12 +560,18 @@ class WriteChapters(Node):
             chapter_content = call_llm(prompt)
             
             # Save the chapter to a file
-            filename = f"chapter_{i:02d}_{title.lower().replace(' ', '_')}.md"
+            sanitized_title = sanitize_filename(title, i)
+            filename = sanitized_title
             filepath = os.path.join(output_dir, filename)
             
-            with open(filepath, 'w') as f:
-                f.write(f"# Chapter {i}: {title}\n\n")
-                f.write(chapter_content)
+            try:
+                with open(filepath, 'w') as f:
+                    f.write(f"# Chapter {i}: {title}\n\n")
+                    f.write(chapter_content)
+                print(f"Written chapter {i}: {filename}")
+            except Exception as e:
+                print(f"Error writing chapter {i}: {e}")
+                return {"error": f"Failed to write chapter {i}: {str(e)}"}
             
             chapters.append({
                 "number": i,
@@ -463,6 +594,9 @@ class CombineTutorial(Node):
     """Creates the final tutorial by combining chapters and adding navigation."""
     
     def prep(self, shared):
+        # Set current stage
+        shared["current_stage"] = "combine"
+        
         return (
             shared.get("chapters"),
             shared.get("tutorial_output_dir", "tutorial"),
@@ -476,57 +610,484 @@ class CombineTutorial(Node):
             return {"error": "Missing chapters or output directory"}
         
         import os
+        import shutil
+        
+        # Ensure the output directory exists
+        try:
+            os.makedirs(output_dir, exist_ok=True)
+        except Exception as e:
+            return {"error": f"Failed to create output directory: {str(e)}"}
         
         # Create the index page with table of contents
         index_content = f"# Tutorial - {language.capitalize()}\n\n"
         index_content += "## Table of Contents\n\n"
         
-        for chapter in sorted(chapters, key=lambda x: x["number"]):
-            index_content += f"{chapter['number']}. [{chapter['title']}]({chapter['filename']})\n"
-        
-        # Add navigation links to each chapter
-        for i, chapter in enumerate(sorted(chapters, key=lambda x: x["number"])):
-            chapter_path = chapter["path"]
+        try:
+            # Sort chapters by number to ensure correct order
+            sorted_chapters = sorted(chapters, key=lambda x: x.get("number", 0))
             
-            with open(chapter_path, 'r') as f:
-                chapter_content = f.read()
+            # Validate that we have chapters
+            if not sorted_chapters:
+                return {"error": "No chapters available to combine"}
             
-            # Add navigation bar
-            nav_bar = "## Navigation\n\n"
+            # Build the table of contents
+            for chapter in sorted_chapters:
+                # Extract relative path for linking
+                filename = os.path.basename(chapter.get("filename", ""))
+                if not filename:
+                    print(f"Warning: Chapter {chapter.get('number', '?')} has no filename")
+                    continue
+                    
+                index_content += f"{chapter['number']}. [{chapter['title']}]({filename})\n"
             
-            if i > 0:
-                prev_chapter = chapters[i-1]
-                nav_bar += f"[← Previous: {prev_chapter['title']}]({prev_chapter['filename']}) | "
-            else:
-                nav_bar += "← Previous | "
+            # Create backup of existing index if it exists
+            index_path = os.path.join(output_dir, "index.md")
+            if os.path.exists(index_path):
+                backup_path = os.path.join(output_dir, "index.md.bak")
+                try:
+                    shutil.copy2(index_path, backup_path)
+                    print(f"Created backup of existing index at {backup_path}")
+                except Exception as e:
+                    print(f"Warning: Could not create backup of index: {e}")
+            
+            # Write the index file
+            try:
+                with open(index_path, 'w') as f:
+                    f.write(index_content)
+                print(f"Written index file to {index_path}")
+            except Exception as e:
+                return {"error": f"Failed to write index file: {str(e)}"}
+            
+            # Create a combined version of all chapters
+            combined_content = index_content + "\n\n"
+            combined_content += "---\n\n"
+            
+            chapter_read_errors = []
+            for chapter in sorted_chapters:
+                try:
+                    chapter_path = chapter.get("path")
+                    if not chapter_path or not os.path.exists(chapter_path):
+                        print(f"Warning: Chapter file not found at {chapter_path}")
+                        chapter_read_errors.append(f"Missing file for chapter {chapter.get('number', '?')}: {chapter_path}")
+                        continue
+                        
+                    with open(chapter_path, 'r') as f:
+                        chapter_text = f.read()
+                    combined_content += chapter_text + "\n\n---\n\n"
+                except Exception as e:
+                    error_msg = f"Could not read chapter {chapter.get('number', '?')}: {str(e)}"
+                    print(f"Warning: {error_msg}")
+                    chapter_read_errors.append(error_msg)
+                    # Continue with other chapters instead of failing completely
+            
+            # Write the combined file
+            combined_path = os.path.join(output_dir, "complete_tutorial.md")
+            try:
+                with open(combined_path, 'w') as f:
+                    f.write(combined_content)
+                print(f"Written combined tutorial to {combined_path}")
+            except Exception as e:
+                return {"error": f"Failed to write combined tutorial: {str(e)}"}
+            
+            # Report any chapter read errors but don't fail the whole process
+            if chapter_read_errors:
+                print(f"Completed with {len(chapter_read_errors)} chapter read errors")
                 
-            nav_bar += f"[↑ Table of Contents](index.md)"
-            
-            if i < len(chapters) - 1:
-                next_chapter = chapters[i+1]
-                nav_bar += f" | [Next: {next_chapter['title']} →]({next_chapter['filename']})"
-            else:
-                nav_bar += " | Next →"
-            
-            with open(chapter_path, 'w') as f:
-                f.write(chapter_content + "\n\n" + nav_bar)
-        
-        # Write the index file
-        index_path = os.path.join(output_dir, "index.md")
-        with open(index_path, 'w') as f:
-            f.write(index_content)
-            
-        return {"index_path": index_path, "total_chapters": len(chapters)}
+            return {
+                "index_path": index_path,
+                "combined_path": combined_path,
+                "chapter_count": len(sorted_chapters),
+                "chapter_read_errors": chapter_read_errors
+            }
+        except Exception as e:
+            error_msg = f"Error combining tutorial: {str(e)}"
+            print(f"ERROR: {error_msg}")
+            return {"error": error_msg}
     
     def post(self, shared, prep_res, exec_res):
         if "error" in exec_res:
             shared["error"] = exec_res["error"]
             return "error"
-            
-        shared["tutorial_index"] = exec_res["index_path"]
-        shared["tutorial_total_chapters"] = exec_res["total_chapters"]
         
-        print(f"\nTutorial successfully generated with {exec_res['total_chapters']} chapters.")
-        print(f"Index file created at: {exec_res['index_path']}")
+        shared["tutorial_index"] = exec_res.get("index_path")
+        shared["tutorial_combined"] = exec_res.get("combined_path")
         
+        # Store chapter read errors if any
+        if "chapter_read_errors" in exec_res and exec_res["chapter_read_errors"]:
+            shared["chapter_read_errors"] = exec_res["chapter_read_errors"]
+        
+        print(f"Completed tutorial generation with {exec_res.get('chapter_count', 0)} chapters.")
         return "default"
+        
+    def exec_fallback(self, prep_res, exc):
+        return {"error": f"Exception in CombineTutorial: {str(exc)}"}
+
+class TutorialErrorHandler(Node):
+    """Error handling node for the tutorial generation flow."""
+    
+    def prep(self, shared):
+        """Prepare error information from the shared store."""
+        import logging
+        import os
+        from datetime import datetime
+        
+        # Configure error logging if not already done
+        if not hasattr(TutorialErrorHandler, "logger_initialized"):
+            log_dir = "logs"
+            os.makedirs(log_dir, exist_ok=True)
+            log_file = os.path.join(log_dir, f"tutorial_errors_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+            
+            # Set up logger
+            logger = logging.getLogger("tutorial_error_logger")
+            logger.setLevel(logging.INFO)
+            handler = logging.FileHandler(log_file)
+            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+            
+            # Add console handler for immediate visibility
+            console_handler = logging.StreamHandler()
+            console_handler.setFormatter(formatter)
+            console_handler.setLevel(logging.ERROR)  # Only ERROR and above to console
+            logger.addHandler(console_handler)
+            
+            TutorialErrorHandler.logger = logger
+            TutorialErrorHandler.logger_initialized = True
+            TutorialErrorHandler.log_file = log_file
+        
+        error = shared.get("error")
+        if error:
+            if hasattr(TutorialErrorHandler, "logger"):
+                TutorialErrorHandler.logger.error(f"Error during processing: {error}")
+                print(f"Error logged to {TutorialErrorHandler.log_file}")
+        
+        # Gather comprehensive error context
+        error_context = {
+            "error": error,
+            "current_stage": shared.get("current_stage", "unknown"),
+            "retry_count": shared.get("retry_count", {}),
+            "repository_url": shared.get("repo_url"),
+            "local_dir": shared.get("local_dir"),
+            "project_name": shared.get("project_name"),
+            "tutorial_output_dir": shared.get("tutorial_output_dir", "tutorial"),
+            "chapter_read_errors": shared.get("chapter_read_errors", []),
+            "file_count": shared.get("file_count"),
+        }
+        
+        # Log additional context
+        if hasattr(TutorialErrorHandler, "logger"):
+            TutorialErrorHandler.logger.info(f"Error context: stage={error_context['current_stage']}, retry_count={error_context['retry_count'].get(error_context['current_stage'], 0)}")
+            
+        return error_context
+    
+    def exec(self, error_info):
+        """Process error and determine the appropriate action."""
+        import time
+        import logging
+        
+        error = error_info["error"]
+        current_stage = error_info["current_stage"]
+        retry_count = error_info.get("retry_count", {})
+        
+        # Initialize retry count for current stage if not exists
+        if current_stage not in retry_count:
+            retry_count[current_stage] = 0
+        
+        # Increment retry count
+        retry_count[current_stage] += 1
+        
+        # Categorize errors for better handling
+        error_category = self._categorize_error(error)
+        max_retries = self._get_max_retries(error_category, current_stage)
+        
+        # Log detailed error information
+        if hasattr(TutorialErrorHandler, "logger"):
+            TutorialErrorHandler.logger.error(
+                f"Error in stage '{current_stage}' (attempt {retry_count[current_stage]}/{max_retries}): "
+                f"{error} (category: {error_category})"
+            )
+        
+        # Calculate wait time with exponential backoff
+        wait_time = self._calculate_backoff(retry_count[current_stage], error_category)
+        
+        # Handle specific error categories
+        if error_category == "file_system":
+            return self._handle_file_system_error(error, current_stage, retry_count, error_info)
+        
+        elif error_category == "api_error":
+            return self._handle_api_error(error, current_stage, retry_count, max_retries, wait_time)
+        
+        elif error_category == "format_error":
+            return self._handle_format_error(error, current_stage, retry_count, max_retries)
+        
+        elif error_category == "content_error":
+            return self._handle_content_error(error, current_stage, retry_count, max_retries)
+        
+        # General retry logic for other errors
+        if retry_count[current_stage] <= max_retries:
+            if wait_time > 0:
+                if hasattr(TutorialErrorHandler, "logger"):
+                    TutorialErrorHandler.logger.info(f"Waiting {wait_time}s before retry...")
+                time.sleep(wait_time)
+                
+            return {
+                "action": "retry",
+                "message": f"Retrying {current_stage} (attempt {retry_count[current_stage]}/{max_retries}).",
+                "error_category": error_category,
+                "retry_count": retry_count[current_stage]
+            }
+        
+        # If all retries exhausted
+        if hasattr(TutorialErrorHandler, "logger"):
+            TutorialErrorHandler.logger.error(
+                f"All retries exhausted for stage '{current_stage}'. "
+                f"Last error: {error}"
+            )
+            
+        return {
+            "action": "terminate",
+            "message": f"All retries exhausted for {current_stage}. Attempting to salvage partial results.",
+            "error_category": error_category
+        }
+    
+    def _categorize_error(self, error):
+        """Categorize the error for better handling."""
+        if isinstance(error, dict) and "error" in error:
+            error_message = error["error"]
+        else:
+            error_message = str(error)
+        
+        error_message = error_message.lower()
+        
+        # File system errors
+        if any(term in error_message for term in ["no such file", "directory", "permission denied", "file exists"]):
+            return "file_system"
+        
+        # API-related errors
+        if any(term in error_message for term in ["api", "token", "rate limit", "timeout", "connection", "network"]):
+            return "api_error"
+        
+        # Format/parsing errors
+        if any(term in error_message for term in ["malformed", "invalid", "format", "syntax", "expected", "parse"]):
+            return "format_error"
+        
+        # Content-related errors
+        if any(term in error_message for term in ["content", "empty", "missing", "not found", "null"]):
+            return "content_error"
+        
+        # Default
+        return "general_error"
+    
+    def _get_max_retries(self, error_category, stage):
+        """Get maximum retry count based on error category and stage."""
+        # Higher retry counts for API errors (rate limiting, etc.)
+        if error_category == "api_error":
+            return 5
+        
+        # Format errors in specific stages may need more attempts
+        if error_category == "format_error" and stage in ["identify", "analyze"]:
+            return 4
+        
+        # File system errors
+        if error_category == "file_system":
+            return 3
+        
+        # Default
+        return 3
+    
+    def _calculate_backoff(self, retry_count, error_category):
+        """Calculate wait time with exponential backoff."""
+        base_wait = 5  # Base wait time in seconds
+        
+        # API errors need longer backoff
+        if error_category == "api_error":
+            base_wait = 10
+        
+        # Exponential backoff with jitter
+        import random
+        wait_time = base_wait * (2 ** (retry_count - 1))  # Exponential
+        jitter = random.uniform(0.8, 1.2)  # Add 20% jitter
+        
+        return wait_time * jitter
+    
+    def _handle_file_system_error(self, error, current_stage, retry_count, error_info):
+        """Handle file system errors like missing files, permissions, etc."""
+        if isinstance(error, dict) and "error" in error:
+            error_message = error["error"]
+        else:
+            error_message = str(error)
+        
+        # Specific handling for directory/file issues in the tutorial directory
+        if "tutorial" in error_message and "no such file" in error_message.lower():
+            # Try to recreate the directory
+            output_dir = error_info.get("tutorial_output_dir", "tutorial")
+            
+            return {
+                "action": "recreate_directory",
+                "message": f"File system error detected. Will recreate directory: {output_dir}",
+                "directory": output_dir,
+                "stage": current_stage
+            }
+        
+        # For other file system errors, just retry normally if retries left
+        max_retries = self._get_max_retries("file_system", current_stage)
+        if retry_count[current_stage] <= max_retries:
+            return {
+                "action": "retry",
+                "message": f"Retrying after file system error (attempt {retry_count[current_stage]}/{max_retries}).",
+                "error_category": "file_system"
+            }
+        
+        # If all retries exhausted for file system errors, try to continue from next stage
+        next_stage = self._get_next_stage(current_stage)
+        if next_stage:
+            return {
+                "action": next_stage,
+                "message": f"Skipping problematic stage {current_stage} and proceeding to {next_stage}."
+            }
+        
+        return {
+            "action": "terminate",
+            "message": f"All retries exhausted for file system errors in {current_stage}."
+        }
+    
+    def _handle_api_error(self, error, current_stage, retry_count, max_retries, wait_time):
+        """Handle API-related errors like rate limits, connection issues, etc."""
+        if retry_count[current_stage] <= max_retries:
+            if hasattr(TutorialErrorHandler, "logger"):
+                TutorialErrorHandler.logger.info(f"API error. Waiting {wait_time}s before retry...")
+            
+            import time
+            time.sleep(wait_time)
+            
+            return {
+                "action": "retry",
+                "message": f"Retrying after API error with {wait_time}s wait (attempt {retry_count[current_stage]}/{max_retries}).",
+                "error_category": "api_error",
+                "wait_time": wait_time
+            }
+        
+        return {
+            "action": "terminate",
+            "message": f"All retries exhausted for API errors in {current_stage}."
+        }
+    
+    def _handle_format_error(self, error, current_stage, retry_count, max_retries):
+        """Handle format/parsing errors by tweaking prompts."""
+        if retry_count[current_stage] <= max_retries:
+            return {
+                "action": "retry_with_better_prompt",
+                "message": f"Format error detected. Retrying with enhanced prompt (attempt {retry_count[current_stage]}/{max_retries}).",
+                "error_category": "format_error"
+            }
+        
+        return {
+            "action": "terminate",
+            "message": f"All retries exhausted for format errors in {current_stage}."
+        }
+    
+    def _handle_content_error(self, error, current_stage, retry_count, max_retries):
+        """Handle content-related errors like missing or invalid content."""
+        if retry_count[current_stage] <= max_retries:
+            return {
+                "action": "retry",
+                "message": f"Content error detected. Retrying (attempt {retry_count[current_stage]}/{max_retries}).",
+                "error_category": "content_error"
+            }
+        
+        # For content errors, try skipping to the next stage if possible
+        next_stage = self._get_next_stage(current_stage)
+        if next_stage:
+            return {
+                "action": next_stage,
+                "message": f"All retries failed for content errors. Skipping to {next_stage}."
+            }
+        
+        return {
+            "action": "terminate",
+            "message": f"All retries exhausted for content errors in {current_stage}."
+        }
+    
+    def _get_next_stage(self, current_stage):
+        """Get the next stage in the flow sequence."""
+        stages = ["fetch", "abstractions", "relationships", "chapters", "write", "combine"]
+        
+        try:
+            current_index = stages.index(current_stage)
+            if current_index < len(stages) - 1:
+                return stages[current_index + 1]
+        except ValueError:
+            pass
+        
+        return None
+    
+    def post(self, shared, prep_res, exec_res):
+        """Update shared store and return appropriate action."""
+        # Update retry count
+        if "retry_count" not in shared:
+            shared["retry_count"] = {}
+        
+        if prep_res and "current_stage" in prep_res:
+            current_stage = prep_res["current_stage"]
+            if "retry_count" in prep_res and current_stage in prep_res["retry_count"]:
+                shared["retry_count"][current_stage] = prep_res["retry_count"][current_stage]
+        
+        # Handle action based on exec_res
+        if exec_res:
+            action = exec_res.get("action")
+            message = exec_res.get("message", "No message provided")
+            
+            print(f"Error handler: {message}")
+            
+            if action == "retry":
+                # Standard retry - return to current stage
+                wait_time = exec_res.get("wait_time", 0)
+                if wait_time > 0:
+                    import time
+                    print(f"Waiting {wait_time}s before retry...")
+                    time.sleep(wait_time)
+                return current_stage
+            
+            elif action == "retry_with_better_prompt":
+                # Set a flag to indicate we need a better prompt
+                shared["better_prompt_needed"] = True
+                # Store the error category for context
+                shared["last_error_category"] = exec_res.get("error_category", "unknown")
+                return current_stage
+            
+            elif action == "recreate_directory":
+                # Try to recreate the directory
+                try:
+                    import os
+                    import shutil
+                    output_dir = exec_res.get("directory", shared.get("tutorial_output_dir", "tutorial"))
+                    if os.path.exists(output_dir):
+                        # Rename the problematic directory
+                        backup_dir = f"{output_dir}_backup_{shared['retry_count'][current_stage]}"
+                        shutil.move(output_dir, backup_dir)
+                        print(f"Moved problematic directory to {backup_dir}")
+                    
+                    # Create a fresh directory
+                    os.makedirs(output_dir, exist_ok=True)
+                    print(f"Created fresh directory: {output_dir}")
+                    
+                    # Depending on the stage, we might need to restart from different points
+                    if current_stage == "combine":
+                        # We have chapters data but need to rewrite files
+                        return "write"
+                    else:
+                        # Go back to the beginning
+                        return "fetch"
+                except Exception as e:
+                    if hasattr(TutorialErrorHandler, "logger"):
+                        TutorialErrorHandler.logger.error(f"Error during directory recreation: {e}")
+                    print(f"Error during directory recreation: {e}")
+                    # If we can't recover, terminate
+                    return "terminate"
+            
+            # If action is a specific stage, go to that stage
+            elif action in ["fetch", "abstractions", "relationships", "chapters", "write", "combine"]:
+                return action
+        
+        # Default termination if no specific action or error in handler itself
+        return "terminate"

@@ -173,36 +173,47 @@ def list_available_models(provider: str, api_key: str) -> List[Dict[str, Any]]:
             return models
             
         elif provider == "google":
+            # Always provide these models for Google to ensure we have a working fallback
+            # This will be used when the API fails to list models or when the package is not installed
+            fallback_models = [
+                {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro", "description": "Latest flagship Gemini model with advanced reasoning"},
+                {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "description": "Gemini model optimized for speed and efficiency"},
+                {"id": "gemini-1.5-pro", "name": "Gemini 1.5 Pro", "description": "Previous generation Gemini model with 1M context window"},
+                {"id": "gemini-1.5-flash", "name": "Gemini 1.5 Flash", "description": "Previous generation fast Gemini model"},
+                {"id": "gemini-1.0-pro", "name": "Gemini 1.0 Pro", "description": "Legacy Gemini model"}
+            ]
+            
             try:
                 import google.generativeai as genai
                 genai.configure(api_key=api_key)
                 
                 # Get available models from Google Generative AI
-                models_response = genai.list_models()
-                
-                # Filter for Gemini models and format the response
-                return [
-                    {
-                        "id": model.name, 
-                        "name": model.name.split('/')[-1] if '/' in model.name else model.name, 
-                        "description": model.description if hasattr(model, 'description') else ""
-                    }
-                    for model in models_response if "gemini" in model.name.lower()
-                ]
+                try:
+                    models_response = genai.list_models()
+                    
+                    # Filter for Gemini models and format the response
+                    api_models = [
+                        {
+                            "id": model.name, 
+                            "name": model.name.split('/')[-1] if '/' in model.name else model.name, 
+                            "description": model.description if hasattr(model, 'description') else ""
+                        }
+                        for model in models_response if "gemini" in model.name.lower()
+                    ]
+                    
+                    # If we successfully got models from the API, return those
+                    if api_models:
+                        return api_models
+                    # Otherwise fall back to our predefined list
+                    print("No Gemini models found via API, using predefined list.")
+                    return fallback_models
+                except Exception as e:
+                    print(f"Error listing Google models: {str(e)}. Using predefined models.")
+                    return fallback_models
             except ImportError:
-                # Comprehensive fallback list of Gemini models if package isn't available
+                # Package not available, use fallback
                 print("Google Generative AI package not available. Using fallback model list.")
-                return [
-                    {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro", "description": "Latest flagship Gemini model with advanced reasoning"},
-                    {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "description": "Gemini model optimized for speed and efficiency"},
-                    {"id": "gemini-2.0-pro-001", "name": "Gemini 2.0 Pro", "description": "Advanced reasoning and multimodal model"},
-                    {"id": "gemini-2.0-flash-001", "name": "Gemini 2.0 Flash", "description": "Fast, cost-effective Gemini model"},
-                    {"id": "gemini-2.0-flash-lite-001", "name": "Gemini 2.0 Flash Lite", "description": "Lightweight version optimized for fast responses"},
-                    {"id": "gemini-1.5-pro", "name": "Gemini 1.5 Pro", "description": "Previous generation Gemini model with 1M context window"},
-                    {"id": "gemini-1.5-flash", "name": "Gemini 1.5 Flash", "description": "Previous generation fast Gemini model"},
-                    {"id": "gemini-1.0-pro", "name": "Gemini 1.0 Pro", "description": "Legacy Gemini model"},
-                    {"id": "gemini-1.0-pro-vision", "name": "Gemini 1.0 Pro Vision", "description": "Legacy Gemini model with vision capabilities"}
-                ]
+                return fallback_models
                 
         elif provider == "openrouter":
             import requests
@@ -239,10 +250,6 @@ def list_available_models(provider: str, api_key: str) -> List[Dict[str, Any]]:
             ],
             "google": [
                 {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro", "description": "Latest flagship Gemini model with advanced reasoning"},
-                {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "description": "Gemini model optimized for speed and efficiency"},
-                {"id": "gemini-2.0-pro-001", "name": "Gemini 2.0 Pro", "description": "Advanced reasoning and multimodal model"},
-                {"id": "gemini-2.0-flash-001", "name": "Gemini 2.0 Flash", "description": "Fast, cost-effective Gemini model"},
-                {"id": "gemini-2.0-flash-lite-001", "name": "Gemini 2.0 Flash Lite", "description": "Lightweight version optimized for fast responses"},
                 {"id": "gemini-1.5-pro", "name": "Gemini 1.5 Pro", "description": "Previous generation Gemini model with 1M context window"},
                 {"id": "gemini-1.5-flash", "name": "Gemini 1.5 Flash", "description": "Previous generation fast Gemini model"}
             ],
@@ -453,6 +460,16 @@ def prompt_model_selection(models: List[Dict[str, Any]]) -> str:
     Returns:
         Selected model ID
     """
+    # Ensure we have at least one model
+    if not models:
+        raise ValueError("No models available to select from")
+        
+    # Default to first model if only one is available
+    if len(models) == 1:
+        print(f"\nOnly one model available: {models[0]['name']}")
+        print(f"Automatically selecting: {models[0]['id']}")
+        return models[0]['id']
+    
     print("\nAvailable models:")
     for i, model in enumerate(models):
         # Format description to be more readable
@@ -466,14 +483,31 @@ def prompt_model_selection(models: List[Dict[str, Any]]) -> str:
     
     while True:
         try:
-            choice = input("\nEnter the number of the model you want to use (e.g., 1): ")
+            choice = input(f"\nEnter the number of the model you want to use (1-{len(models)}): ")
+            
+            # Check if user wants to exit
+            if choice.lower() in ('q', 'quit', 'exit'):
+                raise KeyboardInterrupt("User requested to exit model selection")
+                
+            # Handle default case (empty input)
+            if not choice.strip():
+                print(f"Using default model: {models[0]['name']}")
+                return models[0]['id']
+                
+            # Parse numeric choice
             index = int(choice) - 1
             if 0 <= index < len(models):
                 return models[index]["id"]
             else:
-                print(f"Please enter a number between 1 and {len(models)}")
+                print(f"Please enter a valid number between 1 and {len(models)}")
         except ValueError:
             print("Please enter a valid number")
+        except (KeyboardInterrupt, EOFError):
+            # Handle Ctrl+C or Ctrl+D
+            print("\nCancelling model selection...")
+            # Default to first model when interrupted
+            print(f"Using default model: {models[0]['name']}")
+            return models[0]['id']
 
 def choose_model(models: List[Dict[str, Any]]) -> str:
     """
@@ -512,7 +546,7 @@ def setup_llm_provider() -> Tuple[str, str, str]:
         raise ValueError(f"API key verification failed: {str(e)}")
     
     # Step 4: List Available Models
-    print(f"\nFetching available models from {provider}...")
+    print(f"\nRetrieving available models...")
     try:
         models = list_available_models(provider, api_key)
         if not models:
