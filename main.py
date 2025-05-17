@@ -168,6 +168,32 @@ def run_repo_analysis_agent(args):
         if shared.get("mcp_server_code"):
             print(f"Generated MCP spec: {os.path.join(server_dir, 'mcp_spec.yaml')}")
             print(f"Generated MCP server code: {shared['mcp_server_code']}")
+            # Offer to serve tutorial via Docker test container with volume mapping
+            if input("\nServe tutorial via Docker container? (y/n): ").strip().lower() == 'y':
+                import subprocess, time, re, os
+                tutorial_name = os.path.basename(server_dir.rstrip('/'))
+                host_tutorial_abs = os.path.abspath(server_dir)
+                image_name = "pocketflow-test"
+                print(f"\nBuilding Docker image {image_name} (Dockerfile.test)...")
+                subprocess.run(["docker", "build", "-t", image_name, "-f", "Dockerfile.test", "."], check=True)
+                print(f"Launching Docker container serving tutorial '{tutorial_name}' on localhost:8000 in detached mode...")
+                container_id = subprocess.check_output([
+                    "docker", "run", "-d", "--rm",
+                    "-p", "8000:8000",
+                    "-e", f"TUTORIAL_ROOT=/tutorials/{tutorial_name}",
+                    "-v", f"{host_tutorial_abs}:/tutorials/{tutorial_name}",
+                    image_name
+                ], text=True).strip()
+                print(f"Container started: {container_id}")
+                time.sleep(2)
+                logs = subprocess.check_output(["docker", "logs", container_id], text=True)
+                match = re.search(r'(\{.*\})', logs, re.DOTALL)
+                if match:
+                    print("\nMCP Server JSON details:")
+                    print(match.group(1))
+                else:
+                    print("\nCould not find JSON details in container logs. Full logs:")
+                    print(logs)
         else:
             print(f"Failed to generate MCP server: {shared.get('error')}")
         return
@@ -336,42 +362,39 @@ def run_repo_analysis_agent(args):
                     if tutorial_ans != 'y':
                         print("Skipping tutorial generation.")
                     else:
-                        # List successfully analyzed repositories
-                        analyzed_repo_urls = [url for url, res in all_analysis_results.items() if "error" not in res]
-                        if not analyzed_repo_urls:
-                            print("No repositories were successfully analyzed to generate a tutorial from.")
+                        # Allow tutorial generation for all selected repositories regardless of analysis success
+                        repos_for_tutorial = selected_repo_urls_for_flow
+                        print("\nAvailable repositories for tutorial generation:")
+                        for i, url in enumerate(repos_for_tutorial, 1):
+                            print(f"{i}. {url}")
+                        selection = input("Enter repository number to generate tutorial or 'n' to skip: ").strip().lower()
+                        if selection == 'n' or not selection:
+                            print("No tutorial selected. Exiting tutorial generation.")
                         else:
-                            print("\nAvailable repositories for tutorial generation:")
-                            for i, url in enumerate(analyzed_repo_urls, 1):
-                                print(f"{i}. {url}")
-                            selection = input("Enter repository number to generate tutorial or 'n' to skip: ").strip().lower()
-                            if selection == 'n' or not selection:
-                                print("No tutorial selected. Exiting tutorial generation.")
-                            else:
-                                try:
-                                    choice_idx = int(selection) - 1
-                                    if 0 <= choice_idx < len(analyzed_repo_urls):
-                                        selected_repo_for_tutorial = analyzed_repo_urls[choice_idx]
-                                        print(f"\nProceeding to generate tutorial for: {selected_repo_for_tutorial}")
-                                        tutorial_args_ns = argparse.Namespace(
-                                            repo=selected_repo_for_tutorial,
-                                            local_dir=None,
-                                            project_name=all_analysis_results[selected_repo_for_tutorial].get("validated_repo", {}).get("repo_name"),
-                                            output_dir=args.output_dir if hasattr(args, 'output_dir') else 'tutorial_output',
-                                            language=args.language if hasattr(args, 'language') else 'english',
-                                            include=args.include if hasattr(args, 'include') else None,
-                                            exclude=args.exclude if hasattr(args, 'exclude') else None,
-                                            max_file_size=args.max_file_size if hasattr(args, 'max_file_size') else 100000,
-                                            github_token=args.github_token,
-                                            provider=args.provider,
-                                            model=args.model,
-                                            verbose=args.verbose
-                                        )
-                                        run_tutorial_generation(tutorial_args_ns)
-                                    else:
-                                        print("Invalid selection index.")
-                                except ValueError:
-                                    print("Invalid input for tutorial selection.")
+                            try:
+                                choice_idx = int(selection) - 1
+                                if 0 <= choice_idx < len(repos_for_tutorial):
+                                    selected_repo_for_tutorial = repos_for_tutorial[choice_idx]
+                                    print(f"\nProceeding to generate tutorial for: {selected_repo_for_tutorial}")
+                                    tutorial_args_ns = argparse.Namespace(
+                                        repo=selected_repo_for_tutorial,
+                                        local_dir=None,
+                                        project_name=all_analysis_results.get(selected_repo_for_tutorial, {}).get("validated_repo", {}).get("repo_name"),
+                                        output_dir=args.output_dir if hasattr(args, 'output_dir') else 'tutorial_output',
+                                        language=args.language if hasattr(args, 'language') else 'english',
+                                        include=args.include if hasattr(args, 'include') else None,
+                                        exclude=args.exclude if hasattr(args, 'exclude') else None,
+                                        max_file_size=args.max_file_size if hasattr(args, 'max_file_size') else 100000,
+                                        github_token=args.github_token,
+                                        provider=args.provider,
+                                        model=args.model,
+                                        verbose=args.verbose
+                                    )
+                                    run_tutorial_generation(tutorial_args_ns)
+                                else:
+                                    print("Invalid selection index.")
+                            except ValueError:
+                                print("Invalid input for tutorial selection.")
         else:
             print("Skipping detailed repository analysis.")
 
@@ -407,15 +430,13 @@ def run_tutorial_generation(args):
     elif args.repo: # If it's a repo URL, ensure token might be needed
         ensure_github_token() # Check env and prompt if missing
 
-    # Compute tutorial output directory name from repo URL if provided
+    # Compute tutorial output directory: base output_dir plus repo-derived subfolder
     if args.repo:
         parsed_url = urlparse(args.repo)
-        # Domain base without TLD
         domain_base = parsed_url.netloc.split('.')[0]
-        # Path part, remove leading/trailing slashes and convert to underscores
         path_part = parsed_url.path.strip('/')
-        path_underscored = path_part.replace('/', '_') if path_part else ''
-        computed_output_dir = f"{domain_base}_{path_underscored}" if path_underscored else domain_base
+        subdir = f"{domain_base}_{path_part.replace('/', '_')}" if path_part else domain_base
+        computed_output_dir = os.path.join(args.output_dir, subdir)
     else:
         computed_output_dir = args.output_dir
 
@@ -476,8 +497,33 @@ def run_tutorial_generation(args):
                 server_name = os.path.basename(final_dir)
                 mcp = create_mcp_server(server_name, tools, guides)
                 server_info = start_mcp_server(mcp)
-                print("\nMCP Server details:")
                 print(json.dumps(server_info, indent=2))
+                # Offer to serve tutorial via Docker test container with volume mapping
+                if input("\nServe tutorial via Docker container? (y/n): ").strip().lower() == 'y':
+                    import subprocess, time, re
+                    tutorial_name = os.path.basename(final_dir.rstrip('/'))
+                    host_tutorial_abs = os.path.abspath(final_dir)
+                    image_name = "pocketflow-test"
+                    print(f"\nBuilding Docker image {image_name} (Dockerfile.test)...")
+                    subprocess.run(["docker", "build", "-t", image_name, "-f", "Dockerfile.test", "."], check=True)
+                    print(f"Launching Docker container serving tutorial '{tutorial_name}' on localhost:8000 in detached mode...")
+                    container_id = subprocess.check_output([
+                        "docker", "run", "-d", "--rm",
+                        "-p", "8000:8000",
+                        "-e", f"TUTORIAL_ROOT=/tutorials/{tutorial_name}",
+                        "-v", f"{host_tutorial_abs}:/tutorials/{tutorial_name}",
+                        image_name
+                    ], text=True).strip()
+                    print(f"Container started: {container_id}")
+                    time.sleep(2)
+                    logs = subprocess.check_output(["docker", "logs", container_id], text=True)
+                    match = re.search(r'(\{.*\})', logs, re.DOTALL)
+                    if match:
+                        print("\nMCP Server JSON details:")
+                        print(match.group(1))
+                    else:
+                        print("\nCould not find JSON details in container logs. Full logs:")
+                        print(logs)
         else:
             print("\nTutorial generation finished, but output directory might be missing or an error occurred.")
             if shared_data.get("error"):
@@ -498,6 +544,11 @@ def run_tutorial_generation(args):
 def main():
     """Main entry point dispatching to agent or tutorial generation."""
     args = parse_cli_args()
+
+    # If running agent command, bypass test mode wrapper and execute agent flow directly
+    if args.command == 'agent':
+        run_repo_analysis_agent(args)
+        return
 
     # Handle test/prod mode
     if args.mode == 'test':
@@ -520,7 +571,7 @@ def main():
         container_id = subprocess.check_output([
             "docker", "run", "-d", "--rm",
             "-p", "8000:8000",
-            "-e", f"TUTORIAL_NAME={tutorial_name}",
+            "-e", f"TUTORIAL_ROOT=/tutorials/{tutorial_name}",
             "-v", f"{host_tutorial_abs}:/tutorials/{tutorial_name}",
             image_name
         ], text=True).strip()

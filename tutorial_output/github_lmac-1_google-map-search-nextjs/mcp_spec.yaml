@@ -1,0 +1,32 @@
+examples:
+- args:
+    n: 1
+  tool: get_chapter
+health: /health
+host: localhost
+name: github-lmac-1-google-map-search-nextjs
+port: 8000
+specEndpoint: /mcp_spec
+tools:
+- description: Returns the tutorial index markdown
+  endpoint: /index
+  method: GET
+  name: chapter_index
+  outputSchema:
+    type: string
+- description: Returns one chapter's markdown by number
+  endpoint: /chapter/{n}
+  inputSchema:
+    properties:
+      n:
+        description: Chapter number
+        type: integer
+    required:
+    - n
+    type: object
+  method: GET
+  name: get_chapter
+  outputSchema:
+    type: string
+transport: stdio
+version: 1.0.0

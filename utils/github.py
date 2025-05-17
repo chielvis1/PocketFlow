@@ -345,7 +345,7 @@ def analyze_repository(repo_url: str) -> Dict[str, Any]:
             "forks": basic_info.get("forks_count", 0),
             "issues": basic_info.get("open_issues_count", 0),
             "last_update": basic_info.get("updated_at", ""),
-            "license": basic_info.get("license", {}).get("name", "Unknown")
+            "license": (basic_info.get("license") or {}).get("name", "Unknown")
         },
         "readme_content": readme_content,
         "file_structure": file_structure,

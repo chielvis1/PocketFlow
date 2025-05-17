@@ -9,6 +9,8 @@ from typing import Dict, Any, Optional, Tuple, List, Union
 from urllib.parse import urlparse
 import os
 import json
+import sys
+import subprocess
 
 class ParseRepositoryURLNode(Node):
     """
@@ -620,8 +622,12 @@ class CombineTutorial(Node):
     def exec(self, inputs):
         chapters, output_dir, language = inputs
         
-        if not chapters or not output_dir:
-            return {"error": "Missing chapters or output directory"}
+        # Ensure output directory is specified
+        if not output_dir:
+            return {"error": "Missing output directory"}
+        # Warn if there are no chapters but continue to generate index
+        if not chapters:
+            print("Warning: No chapters to combine, generating empty tutorial index.")
         
         import os
         import shutil
@@ -725,7 +731,11 @@ class CombineTutorial(Node):
         
         shared["tutorial_index"] = exec_res.get("index_path")
         shared["tutorial_combined"] = exec_res.get("combined_path")
-        
+        import os
+        # Set the directory where the tutorial files were written
+        shared["final_output_dir"] = os.path.dirname(exec_res.get("index_path", ""))
+        # Record total number of chapters generated
+        shared["tutorial_total_chapters"] = exec_res.get("chapter_count", 0)
         # Store chapter read errors if any
         if "chapter_read_errors" in exec_res and exec_res["chapter_read_errors"]:
             shared["chapter_read_errors"] = exec_res["chapter_read_errors"]
@@ -773,14 +783,11 @@ First output the YAML spec in ```yaml ... ``` then the Python server code in ```
         if "```python" in raw_output:
             code_str = raw_output.split("```python")[1].split("```", 1)[0].strip()
 
-        # Build a best-practice MCP spec for tutorial server
         raw_spec = yaml.safe_load(yaml_str)
-        # Derive server name and defaults
         server_name = raw_spec.get("name") or os.path.basename(output_dir.rstrip('/'))
         version = raw_spec.get("version", "1.0.0")
         host = raw_spec.get("host", "localhost")
         port = raw_spec.get("port", 8000)
-        # Define recommended endpoints
         mcp_spec = {
             "name": server_name,
             "version": version,
@@ -818,18 +825,24 @@ First output the YAML spec in ```yaml ... ``` then the Python server code in ```
         spec = mcp_spec
         code = code_str
 
-        # Write spec YAML
         spec_path = os.path.join(output_dir, "mcp_spec.yaml")
         with open(spec_path, "w") as f:
             yaml.dump(spec, f)
-        # Write server code
         server_path = os.path.join(output_dir, "simple_mcp_server.py")
-        with open(server_path, "w") as f:
+        with open(server_path, 'w') as f:
             f.write(code)
 
-        shared["mcp_spec"] = spec
-        shared["mcp_server_code"] = server_path
+        # Return spec and server code path for post-processing
+        return {"mcp_spec": spec, "mcp_server_code": server_path}
 
+    def post(self, shared, prep_res, exec_res):
+        # Handle errors from exec
+        if isinstance(exec_res, dict) and exec_res.get("error"):
+            shared["error"] = exec_res.get("error")
+            return "error"
+        # Store MCP spec and server code path
+        shared["mcp_spec"] = exec_res.get("mcp_spec")
+        shared["mcp_server_code"] = exec_res.get("mcp_server_code")
         return "default"
 
 class StartMCPServerNode(Node):
@@ -845,56 +858,18 @@ class StartMCPServerNode(Node):
         return spec, tutorial_root, host, port
 
     def exec(self, inputs):
+        # Launch the simple MCP server script generated in the tutorial directory
         spec, tutorial_root, host, port = inputs
-        # Import FastMCP (or fallback)
-        try:
-            from fastmcp import FastMCP
-        except ImportError:
-            from utils.mcp import MockMCPServer as FastMCP
-
-        server_name = spec.get("name", os.path.basename(tutorial_root or "tutorials"))
-        mcp = FastMCP(server_name)
-
-        # Handler: list available tutorials
-        @mcp.tool(name="list_tutorials")
-        def list_tutorials():
-            dirs = []
-            for name in os.listdir(tutorial_root or "."):
-                path = os.path.join(tutorial_root, name)
-                if os.path.isdir(path):
-                    dirs.append(name)
-            return dirs
-
-        # Handler: get tutorial index
-        @mcp.tool(name="get_tutorial_index")
-        def get_tutorial_index(tutorial_name: str):
-            idx_path = os.path.join(tutorial_root, tutorial_name, "index.md")
-            if not os.path.exists(idx_path):
-                return {"error": "Index not found for tutorial"}
-            return open(idx_path, 'r', encoding='utf-8').read()
-
-        # Handler: list chapters for a tutorial
-        @mcp.tool(name="list_chapters")
-        def list_chapters(tutorial_name: str):
-            folder = os.path.join(tutorial_root, tutorial_name)
-            files = [f for f in sorted(os.listdir(folder)) if f.endswith('.md') and f != 'index.md']
-            return [{"number": i+1, "filename": fn} for i, fn in enumerate(files)]
-
-        # Handler: get a specific chapter
-        @mcp.tool(name="get_chapter")
-        def get_chapter(tutorial_name: str, n: int):
-            folder = os.path.join(tutorial_root, tutorial_name)
-            files = [f for f in sorted(os.listdir(folder)) if f.endswith('.md') and f != 'index.md']
-            idx = int(n) - 1
-            if idx < 0 or idx >= len(files):
-                return {"error": "Chapter number out of range"}
-            path = os.path.join(folder, files[idx])
-            return open(path, 'r', encoding='utf-8').read()
-
-        # Start MCP server
-        from utils.mcp import start_mcp_server
-        info = start_mcp_server(mcp, host=host, port=port)
-        return info
+        import os
+        import time
+        script_path = os.path.join(tutorial_root, "simple_mcp_server.py")
+        if not os.path.exists(script_path):
+            return {"error": f"simple_mcp_server.py not found at {script_path}"}
+        # Start the server script with the same Python interpreter
+        proc = subprocess.Popen([sys.executable, script_path], cwd=tutorial_root)
+        # Give the server a moment to start
+        time.sleep(2)
+        return {"host": host, "port": port, "process_id": proc.pid, "url": f"http://{host}:{port}", "status": "running"}
 
     def post(self, shared, prep_res, exec_res):
         # Combine spec and server info for best-practice output
