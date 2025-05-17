@@ -24,7 +24,7 @@ from utils.search import interactive_search # Existing search utility
 from utils.github import set_github_token, ensure_github_token, analyze_repository_metadata # Existing GitHub utils
 
 # Node imports (mainly for type hinting or direct use if any, though flow handles execution)
-from nodes import AnalyzeRepositoryNode # Example existing node import
+from nodes import AnalyzeRepositoryNode, GenerateMCPServerNode # Example existing node import
 
 # Default file patterns for tutorial generation (from second set)
 DEFAULT_TUTORIAL_INCLUDE_PATTERNS = {
@@ -62,6 +62,10 @@ def parse_cli_args():
         '--github-token', type=str, default=os.environ.get('GITHUB_TOKEN'),
         help='GitHub personal access token (uses GITHUB_TOKEN env var if not specified)'
     )
+    parser.add_argument(
+        '--mode', type=str, choices=['test', 'prod'], default='test',
+        help='Mode of operation: test=build and run Docker; prod=production (coming soon)'
+    )
 
     subparsers = parser.add_subparsers(dest='command', help='Command to run', required=True)
     
@@ -70,6 +74,10 @@ def parse_cli_args():
     agent_parser.add_argument(
         'query', nargs='?', type=str, default='',
         help='The initial query to start repository analysis (optional if interactive)'
+    )
+    agent_parser.add_argument(
+        '--server', type=str,
+        help='Use existing tutorial output directory to generate MCP server'
     )
     agent_parser.add_argument(
         '-i', '--interactive', '--search', action='store_true',
@@ -141,6 +149,28 @@ def parse_cli_args():
 def run_repo_analysis_agent(args):
     """Run the repository analysis agent flow (adapted from original run_agent)."""
     configure_logging(logging.DEBUG if args.verbose else logging.INFO)
+    
+    # If user provided an existing tutorial directory, generate MCP server spec and code only
+    if getattr(args, 'server', None):
+        from nodes import GenerateMCPServerNode
+        server_dir = args.server
+        print(f"\nGenerating MCP server from existing tutorial at {server_dir}...")
+        # Prepare minimal shared data
+        shared = {
+            "tutorial_output_dir": server_dir,
+            # tutorial_index defaults to server_dir/index.md
+            "tutorial_index": os.path.join(server_dir, "index.md"),
+            "features": []  # No features from agent in this mode
+        }
+        # Run the MCP generation node
+        node = GenerateMCPServerNode()
+        action = node.run(shared)
+        if shared.get("mcp_server_code"):
+            print(f"Generated MCP spec: {os.path.join(server_dir, 'mcp_spec.yaml')}")
+            print(f"Generated MCP server code: {shared['mcp_server_code']}")
+        else:
+            print(f"Failed to generate MCP server: {shared.get('error')}")
+        return
     
     if args.github_token:
         set_github_token(args.github_token)
@@ -434,6 +464,20 @@ def run_tutorial_generation(args):
             if total_chapters > 0:
                 print(f"Generated {total_chapters} chapters.")
             print(f"Main tutorial index: {os.path.join(final_dir, 'index.md')}")
+            # Prompt to serve tutorial as a knowledge base via MCP
+            if input("\nWill you like to serve your generated tutorial as a knowledge base? (y/n): ").strip().lower() == 'y':
+                import yaml, json
+                from utils.mcp import create_mcp_server, start_mcp_server
+                spec_path = os.path.join(final_dir, "mcp_spec.yaml")
+                spec = yaml.safe_load(open(spec_path))
+                tools = spec.get("tools", [])
+                # If implementation guides exist in spec
+                guides = spec.get("implementation_guides", {})
+                server_name = os.path.basename(final_dir)
+                mcp = create_mcp_server(server_name, tools, guides)
+                server_info = start_mcp_server(mcp)
+                print("\nMCP Server details:")
+                print(json.dumps(server_info, indent=2))
         else:
             print("\nTutorial generation finished, but output directory might be missing or an error occurred.")
             if shared_data.get("error"):
@@ -455,6 +499,49 @@ def main():
     """Main entry point dispatching to agent or tutorial generation."""
     args = parse_cli_args()
 
+    # Handle test/prod mode
+    if args.mode == 'test':
+        import subprocess, os, time, re
+        # Determine which tutorial directory to serve
+        if args.command == 'tutorial':
+            tutorial_dir = args.output_dir
+        elif args.command == 'agent' and getattr(args, 'server', None):
+            tutorial_dir = args.server
+        else:
+            print("Test mode requires a tutorial directory. Use `tutorial` command or `agent --server`.")
+            return
+        tutorial_name = os.path.basename(tutorial_dir.rstrip('/'))
+        host_tutorial_abs = os.path.abspath(tutorial_dir)
+        image_name = "pocketflow-test"
+        print(f"Building Docker image {image_name} (Dockerfile.test)...")
+        subprocess.run(["docker", "build", "-t", image_name, "-f", "Dockerfile.test", "."], check=True)
+        print(f"Launching Docker container serving tutorial '{tutorial_name}' on localhost:8000 in detached mode...")
+        # Run container detached and capture its ID
+        container_id = subprocess.check_output([
+            "docker", "run", "-d", "--rm",
+            "-p", "8000:8000",
+            "-e", f"TUTORIAL_NAME={tutorial_name}",
+            "-v", f"{host_tutorial_abs}:/tutorials/{tutorial_name}",
+            image_name
+        ], text=True).strip()
+        print(f"Container started in detached mode: {container_id}")
+        # Allow server to initialize
+        time.sleep(2)
+        # Fetch container logs
+        logs = subprocess.check_output(["docker", "logs", container_id], text=True)
+        # Extract JSON details from logs
+        match = re.search(r'(\{.*\})', logs, re.DOTALL)
+        if match:
+            print("\nMCP Server JSON details:")
+            print(match.group(1))
+        else:
+            print("\nCould not find JSON details in container logs. Full logs:")
+            print(logs)
+        return
+    elif args.mode == 'prod':
+        print("Production mode coming soon!")
+        return
+    
     if args.command == 'agent':
         run_repo_analysis_agent(args)
     elif args.command == 'tutorial':

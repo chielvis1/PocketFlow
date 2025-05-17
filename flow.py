@@ -14,7 +14,9 @@ from nodes import (
     # Nodes for tutorial generation (added/adapted)
     FetchRepo, IdentifyAbstractions, AnalyzeRelationships, 
     OrderChapters, WriteChapters, CombineTutorial,
-    TutorialErrorHandler # Added Error Handler
+    GenerateMCPServerNode,
+    TutorialErrorHandler, # Added Error Handler
+    StartMCPServerNode # Dynamically serve MCP
 )
 
 def create_repo_analyzer_flow():
@@ -69,6 +71,13 @@ def create_tutorial_flow():
     order_chapters_node >> write_chapters_node
     write_chapters_node >> combine_tutorial_node
 
+    # After combining tutorial, generate MCP server specification and code
+    generate_mcp_server_node = GenerateMCPServerNode()
+    combine_tutorial_node >> generate_mcp_server_node
+    # Then start the dynamic MCP server
+    start_mcp_server_node = StartMCPServerNode()
+    generate_mcp_server_node >> start_mcp_server_node
+
     # Define error transitions from each main sequence node to the error handler
     fetch_repo_node - "error" >> error_handler_node
     identify_abstractions_node - "error" >> error_handler_node
@@ -76,6 +85,8 @@ def create_tutorial_flow():
     order_chapters_node - "error" >> error_handler_node
     write_chapters_node - "error" >> error_handler_node
     combine_tutorial_node - "error" >> error_handler_node # Errors during final combination
+    generate_mcp_server_node - "error" >> error_handler_node # Handle MCP generation errors
+    start_mcp_server_node - "error" >> error_handler_node # Handle server start errors
 
     # Define retry transitions from the error handler back to the respective nodes
     # The string returned by error_handler_node.post() (e.g., "retry_fetch") must match these conditions.
@@ -84,8 +95,7 @@ def create_tutorial_flow():
     error_handler_node - "retry_relationships" >> analyze_relationships_node
     error_handler_node - "retry_chapters" >> order_chapters_node # Assuming OrderChapters can be retried
     error_handler_node - "retry_write" >> write_chapters_node
-    # No retry for combine_tutorial usually, if it fails, it's often fatal or needs manual fix.
-    # If "terminate" is returned by error_handler_node.post(), the flow ends.
+    # Usually don't retry start_mcp; errors are fatal
 
     # Create the flow, starting with the FetchRepo node
     tutorial_flow = Flow(start=fetch_repo_node)

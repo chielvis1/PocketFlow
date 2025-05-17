@@ -8,6 +8,7 @@ from pocketflow import Node
 from typing import Dict, Any, Optional, Tuple, List, Union
 from urllib.parse import urlparse
 import os
+import json
 
 class ParseRepositoryURLNode(Node):
     """
@@ -734,6 +735,176 @@ class CombineTutorial(Node):
         
     def exec_fallback(self, prep_res, exc):
         return {"error": f"Exception in CombineTutorial: {str(exc)}"}
+
+# Add new node for MCP server spec and code generation
+class GenerateMCPServerNode(Node):
+    """
+    Node to generate an MCP server spec and server code based on the generated tutorial.
+    """
+    def prep(self, shared):
+        return {
+            "output_dir": shared.get("tutorial_output_dir"),
+            "tutorial_index": shared.get("tutorial_index", os.path.join(shared.get("tutorial_output_dir"), "index.md")),
+            "features": shared.get("features", [])
+        }
+
+    def exec(self, inputs):
+        from utils.llm import call_llm
+        import yaml
+        output_dir = inputs["output_dir"]
+        tutorial_index = inputs["tutorial_index"]
+        features = inputs["features"]
+
+        prompt = f"""
+Generate a YAML specification and Python MCP server code that:
+- Serves files from {output_dir}
+- Exposes an endpoint /index to return the contents of {tutorial_index}
+- Exposes endpoints for each chapter file in {output_dir} with path parameters (e.g., /chapter/1)
+- Includes a 'features' section listing: {features}
+
+First output the YAML spec in ```yaml ... ``` then the Python server code in ```python ... ``` format.
+"""
+        raw_output = call_llm(prompt)
+
+        yaml_str = ""
+        code_str = ""
+        if "```yaml" in raw_output:
+            yaml_str = raw_output.split("```yaml")[1].split("```", 1)[0].strip()
+        if "```python" in raw_output:
+            code_str = raw_output.split("```python")[1].split("```", 1)[0].strip()
+
+        # Build a best-practice MCP spec for tutorial server
+        raw_spec = yaml.safe_load(yaml_str)
+        # Derive server name and defaults
+        server_name = raw_spec.get("name") or os.path.basename(output_dir.rstrip('/'))
+        version = raw_spec.get("version", "1.0.0")
+        host = raw_spec.get("host", "localhost")
+        port = raw_spec.get("port", 8000)
+        # Define recommended endpoints
+        mcp_spec = {
+            "name": server_name,
+            "version": version,
+            "transport": raw_spec.get("transport", "stdio"),
+            "host": host,
+            "port": port,
+            "health": raw_spec.get("health", "/health"),
+            "specEndpoint": raw_spec.get("specEndpoint", "/mcp_spec"),
+            "tools": [
+                {
+                    "name": "chapter_index",
+                    "description": f"Returns the tutorial index markdown",
+                    "method": "GET",
+                    "endpoint": "/index",
+                    "outputSchema": {"type": "string"}
+                },
+                {
+                    "name": "get_chapter",
+                    "description": "Returns one chapter's markdown by number",
+                    "method": "GET",
+                    "endpoint": "/chapter/{n}",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {"n": {"type": "integer", "description": "Chapter number"}},
+                        "required": ["n"]
+                    },
+                    "outputSchema": {"type": "string"}
+                }
+            ],
+            # Optional examples for LLM guidance
+            "examples": [
+                {"tool": "get_chapter", "args": {"n": 1}}
+            ]
+        }
+        spec = mcp_spec
+        code = code_str
+
+        # Write spec YAML
+        spec_path = os.path.join(output_dir, "mcp_spec.yaml")
+        with open(spec_path, "w") as f:
+            yaml.dump(spec, f)
+        # Write server code
+        server_path = os.path.join(output_dir, "simple_mcp_server.py")
+        with open(server_path, "w") as f:
+            f.write(code)
+
+        shared["mcp_spec"] = spec
+        shared["mcp_server_code"] = server_path
+
+        return "default"
+
+class StartMCPServerNode(Node):
+    """
+    Node to start an MCP server for a generated tutorial, dynamically serving index and chapters.
+    """
+    def prep(self, shared):
+        # Read spec and determine tutorials root
+        spec = shared.get("mcp_spec")
+        tutorial_root = os.environ.get("TUTORIAL_ROOT") or shared.get("tutorial_output_dir")
+        host = spec.get("host", "localhost")
+        port = spec.get("port", 8000)
+        return spec, tutorial_root, host, port
+
+    def exec(self, inputs):
+        spec, tutorial_root, host, port = inputs
+        # Import FastMCP (or fallback)
+        try:
+            from fastmcp import FastMCP
+        except ImportError:
+            from utils.mcp import MockMCPServer as FastMCP
+
+        server_name = spec.get("name", os.path.basename(tutorial_root or "tutorials"))
+        mcp = FastMCP(server_name)
+
+        # Handler: list available tutorials
+        @mcp.tool(name="list_tutorials")
+        def list_tutorials():
+            dirs = []
+            for name in os.listdir(tutorial_root or "."):
+                path = os.path.join(tutorial_root, name)
+                if os.path.isdir(path):
+                    dirs.append(name)
+            return dirs
+
+        # Handler: get tutorial index
+        @mcp.tool(name="get_tutorial_index")
+        def get_tutorial_index(tutorial_name: str):
+            idx_path = os.path.join(tutorial_root, tutorial_name, "index.md")
+            if not os.path.exists(idx_path):
+                return {"error": "Index not found for tutorial"}
+            return open(idx_path, 'r', encoding='utf-8').read()
+
+        # Handler: list chapters for a tutorial
+        @mcp.tool(name="list_chapters")
+        def list_chapters(tutorial_name: str):
+            folder = os.path.join(tutorial_root, tutorial_name)
+            files = [f for f in sorted(os.listdir(folder)) if f.endswith('.md') and f != 'index.md']
+            return [{"number": i+1, "filename": fn} for i, fn in enumerate(files)]
+
+        # Handler: get a specific chapter
+        @mcp.tool(name="get_chapter")
+        def get_chapter(tutorial_name: str, n: int):
+            folder = os.path.join(tutorial_root, tutorial_name)
+            files = [f for f in sorted(os.listdir(folder)) if f.endswith('.md') and f != 'index.md']
+            idx = int(n) - 1
+            if idx < 0 or idx >= len(files):
+                return {"error": "Chapter number out of range"}
+            path = os.path.join(folder, files[idx])
+            return open(path, 'r', encoding='utf-8').read()
+
+        # Start MCP server
+        from utils.mcp import start_mcp_server
+        info = start_mcp_server(mcp, host=host, port=port)
+        return info
+
+    def post(self, shared, prep_res, exec_res):
+        # Combine spec and server info for best-practice output
+        spec = shared.get('mcp_spec', {})
+        server_info = exec_res
+        combined = { 'spec': spec, 'server': server_info }
+        shared['mcp_server_info'] = combined
+        print(json.dumps(combined, indent=2))
+        # Keep server running (do not return successor)
+        return None
 
 class TutorialErrorHandler(Node):
     """Error handling node for the tutorial generation flow."""

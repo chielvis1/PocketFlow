@@ -1,0 +1,17 @@
+# Dockerfile.test
+FROM python:3.10-alpine
+
+# Set working directory
+WORKDIR /app
+
+# Install minimal runtime dependencies for MCP server
+RUN pip install --no-cache-dir fastmcp pyyaml
+
+# Define the tutorials directory as a volume
+VOLUME /tutorials
+
+# Expose MCP server port
+EXPOSE 8000
+
+# Entry point: use TUTORIAL_NAME env var to locate and run the server script
+CMD ["sh", "-c", "if [ -z \"$TUTORIAL_NAME\" ]; then echo 'TUTORIAL_NAME not set'; exit 1; fi; python /tutorials/$TUTORIAL_NAME/simple_mcp_server.py"] 
