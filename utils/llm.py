@@ -87,7 +87,7 @@ def verify_api_key(provider: str, api_key: str) -> bool:
             from openai import OpenAI
             client = OpenAI(api_key=api_key)
             # Simple API call to verify the key
-            client.models.list(limit=1)
+            client.models.list()
             
         elif provider == "anthropic":
             from anthropic import Anthropic
@@ -154,10 +154,10 @@ def list_available_models(provider: str, api_key: str) -> List[Dict[str, Any]]:
             from openai import OpenAI
             client = OpenAI(api_key=api_key)
             models = client.models.list()
-            # Filter chat models
+            # Return all available models without filtering
             return [
-                {"id": m.id, "name": m.id, "description": ""}
-                for m in models.data if m.id.startswith(("gpt-", "text-"))
+                {"id": m.id, "name": m.id, "description": getattr(m, "description", "")}
+                for m in models.data
             ]
             
         elif provider == "anthropic":
@@ -675,12 +675,24 @@ def call_llm(prompt: str, model: Optional[str] = None,
         if provider == "openai":
             from openai import OpenAI
             client = OpenAI(api_key=api_key)
-            response = client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=temperature,
-                max_tokens=max_tokens
-            )
+            # Build parameters for OpenAI call, omit max_tokens if not provided
+            create_kwargs = {
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": temperature
+            }
+            if max_tokens is not None:
+                create_kwargs["max_tokens"] = max_tokens
+            try:
+                response = client.chat.completions.create(**create_kwargs)
+            except Exception as e:
+                err = str(e)
+                # Retry without temperature if unsupported
+                if "Unsupported value: 'temperature'" in err:
+                    create_kwargs.pop("temperature", None)
+                    response = client.chat.completions.create(**create_kwargs)
+                else:
+                    raise
             return response.choices[0].message.content
             
         elif provider == "anthropic":

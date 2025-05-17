@@ -66,9 +66,14 @@ class AnalyzeRepositoryNode(Node):
         """Analyze GitHub repository."""
         if not repo_url:
             return {"error": "No valid repository URL provided"}
-            
-        from utils.github import analyze_repository
-        return analyze_repository(repo_url)
+        # Safely call repository analysis and catch exceptions
+        try:
+            from utils.github import analyze_repository
+            analysis_result = analyze_repository(repo_url)
+            return analysis_result
+        except Exception as e:
+            # Return error instead of raising to keep flow in error transition
+            return {"error": f"Error during repository analysis: {e}"}
     
     def post(self, shared, prep_res, exec_res):
         """Process repository analysis results."""
@@ -119,19 +124,27 @@ class AnalyzeWithLLMNode(Node):
         5. Recommendations for someone wanting to understand this codebase
         """
         
-        analysis = call_llm(prompt)
-        return {
-            "llm_analysis": analysis,
-            "repo_data": validated_repo
-        }
+        # Safely call LLM and catch errors
+        try:
+            analysis = call_llm(prompt)
+            return {
+                "llm_analysis": analysis,
+                "repo_data": validated_repo
+            }
+        except Exception as e:
+            # Non-fatal LLM error; flow can continue
+            return {"error": f"LLM analysis error: {e}"}
     
     def post(self, shared, prep_res, exec_res):
         """Store LLM analysis results."""
-        if "error" in exec_res:
-            shared["error"] = exec_res["error"]
-            return "error"
-            
-        shared["llm_analysis"] = exec_res["llm_analysis"]
+        # If LLM failed, log and continue without failing the analysis flow
+        if isinstance(exec_res, dict) and exec_res.get("error"):
+            print(f"LLM analysis failed (non-fatal): {exec_res['error']}")
+            # Skip storing llm_analysis, proceed with default
+            return "default"
+        
+        # Store successful LLM analysis
+        shared["llm_analysis"] = exec_res.get("llm_analysis")
         return "default"
 
 class AnalysisErrorNode(Node):

@@ -1,5 +1,5 @@
 """
-Flow definitions for GitHub Repository Analysis.
+Flow definitions for GitHub Repository Analysis and Tutorial Generation.
 
 This file defines flows for analyzing GitHub repositories and generating tutorials.
 """
@@ -7,19 +7,19 @@ This file defines flows for analyzing GitHub repositories and generating tutoria
 from pocketflow import Flow
 
 from nodes import (
-    # Nodes for repository analysis
+    # Nodes for repository analysis (existing)
     ParseRepositoryURLNode, AnalyzeRepositoryNode, 
     AnalyzeWithLLMNode, AnalysisErrorNode,
     
-    # Nodes for tutorial generation
+    # Nodes for tutorial generation (added/adapted)
     FetchRepo, IdentifyAbstractions, AnalyzeRelationships, 
     OrderChapters, WriteChapters, CombineTutorial,
-    TutorialErrorHandler
+    TutorialErrorHandler # Added Error Handler
 )
 
 def create_repo_analyzer_flow():
     """
-    Create a flow for repository analysis.
+    Create a flow for repository analysis. (Existing flow)
     
     Returns:
         Flow: The configured repository analyzer flow
@@ -28,56 +28,69 @@ def create_repo_analyzer_flow():
     parse_url_node = ParseRepositoryURLNode()
     analyze_repo_node = AnalyzeRepositoryNode()
     analyze_with_llm_node = AnalyzeWithLLMNode()
-    analysis_error_node = AnalysisErrorNode()
+    analysis_error_node = AnalysisErrorNode() # General error handler for this flow
     
     # Connect nodes
-    parse_url_node >> analyze_repo_node
-    analyze_repo_node - "default" >> analyze_with_llm_node
-    analyze_repo_node - "analysis_error" >> analysis_error_node
-    analyze_repo_node - "error" >> analysis_error_node
-    
+    parse_url_node >> analyze_repo_node # Default transition
+    # Conditional transitions based on outcome string from node's post method
+    parse_url_node - "error" >> analysis_error_node 
+
+    analyze_repo_node >> analyze_with_llm_node # Default transition
+    analyze_repo_node - "analysis_error" >> analysis_error_node # Specific error from analysis
+    analyze_repo_node - "error" >> analysis_error_node # More general error from analysis node
+
+    analyze_with_llm_node - "error" >> analysis_error_node # Error from LLM analysis
+
     # Create and return flow
+    # The flow ends implicitly when a node has no further default or matched conditional transition.
+    # analysis_error_node is a terminal node for error paths in this simple setup.
     return Flow(start=parse_url_node)
 
 def create_tutorial_flow():
     """
-    Create and return the tutorial generation flow (1:1 match with mcp-pipeline reference).
+    Create and return the tutorial generation flow.
+    (Adapted from the second set to use first set's conventions and error handling)
     """
-    # Create nodes
-    fetch_repo = FetchRepo()
-    identify_abstractions = IdentifyAbstractions(max_retries=5, wait=20)
-    analyze_relationships = AnalyzeRelationships(max_retries=5, wait=20)
-    order_chapters = OrderChapters(max_retries=5, wait=20)
-    write_chapters = WriteChapters(max_retries=5, wait=20)
-    combine_tutorial = CombineTutorial()
-    error_handler = TutorialErrorHandler()
-
-    # Connect nodes with default transitions
-    fetch_repo - "default" >> identify_abstractions
-    identify_abstractions - "default" >> analyze_relationships
-    analyze_relationships - "default" >> order_chapters
-    order_chapters - "default" >> write_chapters
-    write_chapters - "default" >> combine_tutorial
-
-    # Add error handling transitions
-    fetch_repo - "error" >> error_handler
-    identify_abstractions - "error" >> error_handler
-    analyze_relationships - "error" >> error_handler
-    order_chapters - "error" >> error_handler
-    write_chapters - "error" >> error_handler
-    combine_tutorial - "error" >> error_handler
-
-    # Handle retry scenarios
-    error_handler - "retry_fetch" >> fetch_repo
-    error_handler - "retry_abstractions" >> identify_abstractions
-    error_handler - "retry_relationships" >> analyze_relationships
-    error_handler - "retry_chapters" >> order_chapters
-    error_handler - "retry_write" >> write_chapters
+    # Instantiate nodes for tutorial generation
+    fetch_repo_node = FetchRepo()
+    identify_abstractions_node = IdentifyAbstractions(max_retries=3, wait=10) # Example retry config
+    analyze_relationships_node = AnalyzeRelationships(max_retries=3, wait=10)
+    order_chapters_node = OrderChapters(max_retries=3, wait=10)
+    write_chapters_node = WriteChapters(max_retries=2, wait=15) # Regular Node, not BatchNode
+    combine_tutorial_node = CombineTutorial()
     
-    # The flow will end gracefully when the error handler returns "terminate"
-    # No need to explicitly connect this action to any node
+    # Instantiate the error handler node
+    error_handler_node = TutorialErrorHandler()
 
-    return Flow(start=fetch_repo)
+    # Connect nodes in the main sequence (default transitions)
+    fetch_repo_node >> identify_abstractions_node
+    identify_abstractions_node >> analyze_relationships_node
+    analyze_relationships_node >> order_chapters_node
+    order_chapters_node >> write_chapters_node
+    write_chapters_node >> combine_tutorial_node
 
-# Backward compatibility alias
-create_tutorial_generator_flow = create_tutorial_flow 
+    # Define error transitions from each main sequence node to the error handler
+    fetch_repo_node - "error" >> error_handler_node
+    identify_abstractions_node - "error" >> error_handler_node
+    analyze_relationships_node - "error" >> error_handler_node
+    order_chapters_node - "error" >> error_handler_node
+    write_chapters_node - "error" >> error_handler_node
+    combine_tutorial_node - "error" >> error_handler_node # Errors during final combination
+
+    # Define retry transitions from the error handler back to the respective nodes
+    # The string returned by error_handler_node.post() (e.g., "retry_fetch") must match these conditions.
+    error_handler_node - "retry_fetch" >> fetch_repo_node
+    error_handler_node - "retry_abstractions" >> identify_abstractions_node
+    error_handler_node - "retry_relationships" >> analyze_relationships_node
+    error_handler_node - "retry_chapters" >> order_chapters_node # Assuming OrderChapters can be retried
+    error_handler_node - "retry_write" >> write_chapters_node
+    # No retry for combine_tutorial usually, if it fails, it's often fatal or needs manual fix.
+    # If "terminate" is returned by error_handler_node.post(), the flow ends.
+
+    # Create the flow, starting with the FetchRepo node
+    tutorial_flow = Flow(start=fetch_repo_node)
+
+    return tutorial_flow
+
+# Backward compatibility alias if used elsewhere (from first set)
+create_tutorial_generator_flow = create_tutorial_flow
