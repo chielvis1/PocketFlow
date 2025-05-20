@@ -776,6 +776,7 @@ Generate a YAML specification and Python MCP server code that:
 - Includes a 'features' section listing: {features}
 - Exits with an error if the TUTORIAL_NAME environment variable is not set
 - Prints server information as JSON to stdout when starting for logging purposes
+- IMPORTANT: Server information must follow the MCP specification format with "mcpServers" as the root key
 
 First output the YAML spec in ```yaml ... ``` then the Python server code in ```python ... ``` format.
 """
@@ -829,9 +830,12 @@ First output the YAML spec in ```yaml ... ``` then the Python server code in ```
         }
         spec = mcp_spec
         
-        # If the LLM doesn't generate code that uses environment variables properly,
+        # Check if the LLM-generated code includes mcpServers format
+        has_mcp_servers = "mcpServers" in code_str
+        
+        # If the LLM doesn't generate code that uses environment variables properly or doesn't have mcpServers,
         # ensure we have a fallback implementation
-        if "TUTORIAL_NAME = os.environ.get(" not in code_str:
+        if "TUTORIAL_NAME = os.environ.get(" not in code_str or not has_mcp_servers:
             code_str = """from http.server import BaseHTTPRequestHandler, HTTPServer
 import os
 import urllib.parse
@@ -921,7 +925,7 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
         # Format chapter filename based on the actual files in the directory
         chapter_num_padded = chapter_num.zfill(2)
         # Look for files that match the pattern chapter_XX__*.md
-        chapter_files = [f for f in os.listdir(ROOT_DIR) if f.startswith(f"chapter_{chapter_num_padded}__") and f.endswith(".md")]
+        chapter_files = [f for f in os.listdir(ROOT_DIR) if f.startswith(f"chapter_{chapter_num_padded}_") and f.endswith(".md")]
         
         if not chapter_files:
             self.send_error(404, f"Chapter {chapter_num} file not found")
@@ -946,17 +950,24 @@ def run(server_class=HTTPServer, handler_class=MCPRequestHandler, port=8000):
     httpd = server_class(server_address, handler_class)
     
     # Print server information in JSON format for the main.py script to extract
+    # Format it according to MCP specification with mcpServers as an object
     server_info = {
-        "name": TUTORIAL_NAME,
-        "host": "localhost",
-        "port": port,
-        "status": "running",
-        "tutorial_path": ROOT_DIR,
-        "endpoints": {
-            "health": "/health",
-            "spec": "/mcp_spec",
-            "index": "/index",
-            "chapter": "/chapter/{n}"
+        "mcpServers": {
+            TUTORIAL_NAME: {
+                "host": "localhost",
+                "port": port,
+                "transport": "stdio",  # or "sse" if using Server-Sent Events
+                "version": "1.0.0",
+                "status": "running",
+                "tutorial_path": ROOT_DIR,
+                "endpoints": {
+                    "health": "/health",
+                    "spec": "/mcp_spec",
+                    "index": "/index",
+                    "chapter": "/chapter/{n}"
+                },
+                "command": f"python {os.path.basename(__file__)}"  # Include command for stdio transport
+            }
         }
     }
     print(json.dumps(server_info, indent=2))
@@ -1020,9 +1031,24 @@ class StartMCPServerNode(Node):
         # Combine spec and server info for best-practice output
         spec = shared.get('mcp_spec', {})
         server_info = exec_res
-        combined = { 'spec': spec, 'server': server_info }
-        shared['mcp_server_info'] = combined
-        print(json.dumps(combined, indent=2))
+        
+        # Create proper MCP format with mcpServers as an object
+        mcp_formatted = {
+            "mcpServers": {
+                spec.get("name", "tutorial_server"): {
+                    "host": server_info.get("host", "localhost"),
+                    "port": server_info.get("port", 8000),
+                    "transport": spec.get("transport", "stdio"),
+                    "version": spec.get("version", "1.0.0"),
+                    "tutorial_path": server_info.get("tutorial_path", ""),
+                    "endpoints": server_info.get("endpoints", {}),
+                    "status": server_info.get("status", "running")
+                }
+            }
+        }
+        
+        shared['mcp_server_info'] = mcp_formatted
+        print(json.dumps(mcp_formatted, indent=2))
         # Keep server running (do not return successor)
         return None
 

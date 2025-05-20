@@ -87,7 +87,7 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
         # Format chapter filename based on the actual files in the directory
         chapter_num_padded = chapter_num.zfill(2)
         # Look for files that match the pattern chapter_XX__*.md
-        chapter_files = [f for f in os.listdir(ROOT_DIR) if f.startswith(f"chapter_{chapter_num_padded}__") and f.endswith(".md")]
+        chapter_files = [f for f in os.listdir(ROOT_DIR) if f.startswith(f"chapter_{chapter_num_padded}_") and f.endswith(".md")]
         
         if not chapter_files:
             self.send_error(404, f"Chapter {chapter_num} file not found")
@@ -112,17 +112,24 @@ def run(server_class=HTTPServer, handler_class=MCPRequestHandler, port=8000):
     httpd = server_class(server_address, handler_class)
     
     # Print server information in JSON format for the main.py script to extract
+    # Format it according to MCP specification with mcpServers as an object
     server_info = {
-        "name": TUTORIAL_NAME,
-        "host": "localhost",
-        "port": port,
-        "status": "running",
-        "tutorial_path": ROOT_DIR,
-        "endpoints": {
-            "health": "/health",
-            "spec": "/mcp_spec",
-            "index": "/index",
-            "chapter": "/chapter/{n}"
+        "mcpServers": {
+            TUTORIAL_NAME: {
+                "host": "localhost",
+                "port": port,
+                "transport": "stdio",  # or "sse" if using Server-Sent Events
+                "version": "1.0.0",
+                "status": "running",
+                "tutorial_path": ROOT_DIR,
+                "endpoints": {
+                    "health": "/health",
+                    "spec": "/mcp_spec",
+                    "index": "/index",
+                    "chapter": "/chapter/{n}"
+                },
+                "command": f"python {os.path.basename(__file__)}"  # Include command for stdio transport
+            }
         }
     }
     print(json.dumps(server_info, indent=2))
