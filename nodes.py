@@ -775,6 +775,7 @@ Generate a YAML specification and Python MCP server code that:
 - Exposes endpoints for each chapter file with path parameters (e.g., /chapter/1)
 - Includes a 'features' section listing: {features}
 - Exits with an error if the TUTORIAL_NAME environment variable is not set
+- Prints server information as JSON to stdout when starting for logging purposes
 
 First output the YAML spec in ```yaml ... ``` then the Python server code in ```python ... ``` format.
 """
@@ -943,6 +944,24 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
 def run(server_class=HTTPServer, handler_class=MCPRequestHandler, port=8000):
     server_address = ('', port)
     httpd = server_class(server_address, handler_class)
+    
+    # Print server information in JSON format for the main.py script to extract
+    server_info = {
+        "name": TUTORIAL_NAME,
+        "host": "localhost",
+        "port": port,
+        "status": "running",
+        "tutorial_path": ROOT_DIR,
+        "endpoints": {
+            "health": "/health",
+            "spec": "/mcp_spec",
+            "index": "/index",
+            "chapter": "/chapter/{n}"
+        }
+    }
+    print(json.dumps(server_info, indent=2))
+    sys.stdout.flush()  # Ensure output is visible in Docker logs
+    
     print(f"Starting MCP server on port {port} for tutorial: {TUTORIAL_NAME}...")
     sys.stdout.flush()  # Ensure output is visible in Docker logs
     httpd.serve_forever()

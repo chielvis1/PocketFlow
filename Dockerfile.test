@@ -5,7 +5,7 @@ FROM python:3.10-alpine
 WORKDIR /app
 
 # Install minimal runtime dependencies for MCP server
-RUN pip install --no-cache-dir fastmcp pyyaml
+RUN pip install --no-cache-dir fastmcp pyyaml flask
 
 # Define the tutorials directory as a volume
 VOLUME /tutorials

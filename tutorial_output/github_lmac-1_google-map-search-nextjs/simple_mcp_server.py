@@ -110,6 +110,24 @@ class MCPRequestHandler(BaseHTTPRequestHandler):
 def run(server_class=HTTPServer, handler_class=MCPRequestHandler, port=8000):
     server_address = ('', port)
     httpd = server_class(server_address, handler_class)
+    
+    # Print server information in JSON format for the main.py script to extract
+    server_info = {
+        "name": TUTORIAL_NAME,
+        "host": "localhost",
+        "port": port,
+        "status": "running",
+        "tutorial_path": ROOT_DIR,
+        "endpoints": {
+            "health": "/health",
+            "spec": "/mcp_spec",
+            "index": "/index",
+            "chapter": "/chapter/{n}"
+        }
+    }
+    print(json.dumps(server_info, indent=2))
+    sys.stdout.flush()  # Ensure output is visible in Docker logs
+    
     print(f"Starting MCP server on port {port} for tutorial: {TUTORIAL_NAME}...")
     sys.stdout.flush()  # Ensure output is visible in Docker logs
     httpd.serve_forever()
