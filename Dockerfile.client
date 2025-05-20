@@ -1,12 +1,13 @@
-FROM python:3.10-slim
+FROM --platform=linux/amd64 python:3.10-slim
 
 WORKDIR /app
 
 # Install dependencies
 RUN pip install fastmcp requests
 
-# Copy the client script
-COPY test_fastmcp_client.py .
+# Copy the test client script
+COPY test_client.py /app/
+RUN chmod +x /app/test_client.py
 
-# Run the client
-CMD ["python", "test_fastmcp_client.py"]
+# Run the client with proper error handling
+CMD ["python", "-u", "/app/test_client.py"] 

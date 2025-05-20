@@ -10,6 +10,7 @@ import os
 import sys
 import argparse
 import logging
+import json
 from pathlib import Path
 
 # Configure logging
@@ -41,8 +42,8 @@ def parse_arguments():
     parser.add_argument(
         "--host",
         type=str,
-        default=os.environ.get("MCP_HOST", "localhost"),
-        help="Host to bind to (default: localhost or MCP_HOST env var)"
+        default=os.environ.get("MCP_HOST", "0.0.0.0"),
+        help="Host to bind to (default: 0.0.0.0 or MCP_HOST env var)"
     )
     
     parser.add_argument(
@@ -73,6 +74,148 @@ def parse_arguments():
     )
     
     return parser.parse_args()
+
+def get_tool_descriptions():
+    """Get descriptions of all available tools"""
+    # Basic tools
+    tools = [
+        {
+            "name": "chapter_index",
+            "description": "Returns the tutorial index markdown",
+            "parameters": {},
+            "returns": {"content": "Markdown content", "format": "markdown"}
+        },
+        {
+            "name": "get_chapter",
+            "description": "Returns one chapter's markdown by number",
+            "parameters": {"n": "Chapter number (integer)"},
+            "returns": {"content": "Markdown content", "format": "markdown", "chapter_number": "Integer"}
+        },
+        {
+            "name": "get_complete_tutorial",
+            "description": "Returns the complete tutorial markdown",
+            "parameters": {},
+            "returns": {"content": "Markdown content", "format": "markdown"}
+        },
+        {
+            "name": "analyze_document_structure",
+            "description": "Analyzes document structure of a specific chapter",
+            "parameters": {"chapter_num": "Chapter number (integer)"},
+            "returns": {
+                "headings": "List of heading objects with level, text, and line number",
+                "sections": "List of section objects with heading and content",
+                "codeBlocks": "List of code block objects with language and code"
+            }
+        },
+        {
+            "name": "extract_code_samples",
+            "description": "Extracts code samples from a chapter with optional language filtering",
+            "parameters": {
+                "chapter_num": "Chapter number (integer)",
+                "language": "Optional programming language filter (string)"
+            },
+            "returns": {
+                "samples": "List of code samples with language and code",
+                "count": "Number of samples found"
+            }
+        },
+        {
+            "name": "generate_document_outline",
+            "description": "Creates hierarchical representation of document structure",
+            "parameters": {},
+            "returns": {"outline": "List of chapters with headings"}
+        },
+        {
+            "name": "extract_component_diagrams",
+            "description": "Identifies React component hierarchies from documentation",
+            "parameters": {},
+            "returns": {
+                "components": "Dictionary of component names to component info",
+                "graph": "Component relationship graph with nodes and edges"
+            }
+        },
+        {
+            "name": "extract_data_flow",
+            "description": "Analyzes and visualizes data flow between components",
+            "parameters": {},
+            "returns": {
+                "dataFlows": "List of data flow descriptions",
+                "components": "List of component names"
+            }
+        },
+        {
+            "name": "extract_api_interfaces",
+            "description": "Identifies API interfaces and data structures",
+            "parameters": {},
+            "returns": {
+                "interfaces": "List of interface definitions",
+                "count": "Number of interfaces found"
+            }
+        }
+    ]
+    
+    # Advanced tools
+    advanced_tools = [
+        {
+            "name": "identify_design_patterns",
+            "description": "Detects common software design patterns in code samples",
+            "parameters": {"chapter_num": "Chapter number (integer)"},
+            "returns": {
+                "results": "List of results with language and patterns",
+                "count": "Number of patterns found"
+            }
+        },
+        {
+            "name": "extract_function_signatures",
+            "description": "Parses and categorizes function definitions",
+            "parameters": {"chapter_num": "Chapter number (integer)"},
+            "returns": {
+                "results": "List of results with language and functions",
+                "count": "Number of functions found"
+            }
+        },
+        {
+            "name": "analyze_dependencies",
+            "description": "Maps relationships between components/modules",
+            "parameters": {},
+            "returns": {
+                "graph": "Dependency graph with nodes and edges",
+                "nodeCount": "Number of nodes",
+                "edgeCount": "Number of edges"
+            }
+        },
+        {
+            "name": "technical_glossary",
+            "description": "Extracts and defines technical terms used in the documentation",
+            "parameters": {},
+            "returns": {
+                "glossary": "Dictionary of terms to definitions",
+                "count": "Number of terms"
+            }
+        },
+        {
+            "name": "search_by_concept",
+            "description": "Allows searching by technical concepts rather than just keywords",
+            "parameters": {"concept": "Technical concept to search for (string)"},
+            "returns": {
+                "results": "List of search results with chapter and matches",
+                "totalMatches": "Total number of matches"
+            }
+        },
+        {
+            "name": "related_concepts",
+            "description": "Finds related technical concepts within documentation",
+            "parameters": {"concept": "Technical concept to find related concepts for (string)"},
+            "returns": {
+                "concept": "Original concept",
+                "related": "List of related concepts with term, definition, and relevance",
+                "count": "Number of related concepts"
+            }
+        }
+    ]
+    
+    # Combine basic and advanced tools
+    return tools + advanced_tools
 
 def main():
     """Main entry point"""
@@ -145,8 +288,10 @@ def main():
         # Log server info
         logger.info(f"Server started: {server_info}")
         
+        # Get tool descriptions
+        tool_descriptions = get_tool_descriptions()
+        
         # Print JSON server info to stdout for container orchestration
-        import json
         server_json = {
             "mcpServers": [
                 {
@@ -158,7 +303,8 @@ def main():
                     "tutorial_dir": str(tutorial_dir.absolute()),
                     "chapter_count": len(chapter_files)
                 }
-            ]
+            ],
+            "tools": tool_descriptions
         }
         print(json.dumps(server_json, indent=2))
         

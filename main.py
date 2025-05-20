@@ -177,7 +177,7 @@ def run_repo_analysis_agent(args):
                 host_tutorial_abs = os.path.abspath(server_dir)
                 image_name = "pocketflow-test"
                 print(f"\nBuilding Docker image {image_name} (Dockerfile.test)...")
-                subprocess.run(["docker", "build", "-t", image_name, "-f", "Dockerfile.test", "."], check=True)
+                subprocess.run(["docker", "build", "--platform", "linux/amd64", "-t", image_name, "-f", "Dockerfile.test", "."], check=True)
                 print(f"Launching Docker container serving tutorial '{tutorial_name}' on localhost:8000 in detached mode...")
                 container_name = f"pocketflow-tutorial-{tutorial_name.replace('/', '_').replace(' ', '_')[:30]}"
                 try:
@@ -564,85 +564,119 @@ def run_tutorial_generation(args):
                 
                 # Docker-based approach with improved error handling
                 image_name = "pocketflow-test"
-                print(f"Building Docker image {image_name} (Dockerfile.test)...")
+                print(f"\nBuilding Docker image {image_name} (Dockerfile.test)...")
                 try:
-                    subprocess.run(["docker", "build", "-t", image_name, "-f", "Dockerfile.test", "."], check=True)
+                    subprocess.run(["docker", "build", "--platform", "linux/amd64", "-t", image_name, "-f", "Dockerfile.test", "."], check=True)
                     
                     # Create a safe container name (alphanumeric and underscore only)
                     safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', os.path.basename(final_dir.rstrip('/')))
-                    container_name = f"pocketflow_{safe_name}"[:63]  # Docker has a 64 char limit
-                    
-                    print(f"Launching Docker container serving tutorial '{os.path.basename(final_dir.rstrip('/'))}' on localhost:8000...")
-                    
-                    # First try to remove any existing container with the same name
-                    subprocess.run(["docker", "rm", "-f", container_name], check=False, stderr=subprocess.DEVNULL)
-                    
-                    # Run container with specific name and capture its ID
-                    container_id = subprocess.check_output([
-                        "docker", "run", "-d", "--rm",
-                        "--name", container_name,
-                        "-p", "8000:8000",
-                        "-e", f"TUTORIAL_NAME={os.path.basename(final_dir.rstrip('/'))}",
-                        "-e", "DEBUG=true",  # Enable debug logging
-                        "-v", f"{os.path.abspath(final_dir)}:/tutorials/{os.path.basename(final_dir.rstrip('/'))}",
-                        image_name
-                    ], text=True).strip()
-                    
-                    print(f"Container started with ID: {container_id}")
-                    print(f"Container name: {container_name}")
-                    
-                    # Allow server to initialize
-                    print("Waiting for server to initialize...")
-                    time.sleep(5)  # Increased wait time for initialization
-                    
-                    # Check if container is still running
-                    container_status = subprocess.check_output(
-                        ["docker", "ps", "-q", "--filter", f"id={container_id}"], 
-                        text=True
-                    ).strip()
-                    
-                    if not container_status:
-                        print("Container exited unexpectedly. Checking logs...")
-                        try:
-                            exit_logs = subprocess.check_output(["docker", "logs", container_id], text=True)
-                            print("\nContainer exit logs:")
-                            print(exit_logs)
-                        except subprocess.CalledProcessError as e:
-                            print(f"Error getting logs: {e}")
-                            
-                        print("\nContainer status:")
-                        subprocess.run(["docker", "ps", "-a", "--filter", f"id={container_id}"], check=False)
-                        return
-                    
-                    # Container is running, get logs
+                    container_name = f"pocketflow-tutorial-{safe_name[:30]}"
                     try:
-                        logs = subprocess.check_output(["docker", "logs", container_id], text=True)
+                        # First try to remove any existing container with the same name
+                        subprocess.run(["docker", "rm", "-f", container_name], check=False, stderr=subprocess.DEVNULL)
                         
-                        # Extract JSON details from logs
-                        match = re.search(r'(\{.*\})', logs, re.DOTALL)
-                        if match:
-                            print("\nMCP Server JSON details:")
-                            print(match.group(1))
-                            print("\nServer is running at http://localhost:8000")
-                            print("Press Ctrl+C to stop the server (container will be removed automatically)")
-                            
-                            # Keep the script running until user interrupts
+                        # Run with a specific container name and capture the container ID
+                        container_id = subprocess.check_output([
+                            "docker", "run", "-d", "--rm",
+                            "--name", container_name,
+                            "-p", "8000:8000",
+                            "-e", f"TUTORIAL_NAME={os.path.basename(final_dir.rstrip('/'))}",
+                            "-e", "DEBUG=true",  # Enable debug logging
+                            "-v", f"{os.path.abspath(final_dir)}:/tutorials/{os.path.basename(final_dir.rstrip('/'))}",
+                            image_name
+                        ], text=True).strip()
+
+                        print(f"Container started with ID: {container_id}")
+                        print(f"Container name: {container_name}")
+                        
+                        # Allow server to initialize
+                        print("Waiting for server to initialize...")
+                        time.sleep(5)  # Increased wait time for initialization
+                        
+                        # Check if container is still running
+                        container_status = subprocess.check_output(
+                            ["docker", "ps", "-q", "--filter", f"id={container_id}"], 
+                            text=True
+                        ).strip()
+                        
+                        if not container_status:
+                            print("Container exited unexpectedly. Checking logs...")
                             try:
-                                while True:
-                                    time.sleep(1)
-                            except KeyboardInterrupt:
-                                print("\nStopping container...")
-                                subprocess.run(["docker", "stop", container_id], check=False)
-                                print("Container stopped.")
-                        else:
-                            print("\nCould not find JSON details in container logs. Full logs:")
-                            print(logs)
-                            print("\nServer may not have started correctly.")
-                    except subprocess.CalledProcessError as e:
-                        print(f"Error getting container logs: {e}")
-                        print("Attempting to check container status...")
-                        subprocess.run(["docker", "ps", "-a", "--filter", f"id={container_id}"], check=False)
+                                exit_logs = subprocess.check_output(["docker", "logs", container_id], text=True)
+                                print("\nContainer exit logs:")
+                                print(exit_logs)
+                            except subprocess.CalledProcessError as e:
+                                print(f"Error getting logs: {e}")
+                                
+                            print("\nContainer status:")
+                            subprocess.run(["docker", "ps", "-a", "--filter", f"id={container_id}"], check=False)
+                            return
                         
+                        # Container is running, get logs
+                        try:
+                            logs = subprocess.check_output(["docker", "logs", container_id], text=True)
+                            
+                            # Extract JSON details from logs
+                            match = re.search(r'(\{.*\})', logs, re.DOTALL)
+                            if match:
+                                print("\nMCP Server JSON details:")
+                                server_json_str = match.group(1)
+                                
+                                # Parse the JSON to extract and display server info and tools
+                                try:
+                                    server_json = json.loads(server_json_str)
+                                    
+                                    # Print server information
+                                    if "mcpServers" in server_json:
+                                        print("\nServer Information:")
+                                        print(json.dumps(server_json["mcpServers"], indent=2))
+                                    
+                                    # Print tools information
+                                    if "tools" in server_json:
+                                        print("\nAvailable Tools:")
+                                        tools = server_json["tools"]
+                                        print(f"Found {len(tools)} available tools:")
+                                        
+                                        for i, tool in enumerate(tools, 1):
+                                            print(f"\n{i}. {tool['name']}")
+                                            print(f"   Description: {tool['description']}")
+                                            
+                                            if tool['parameters']:
+                                                print(f"   Parameters: {json.dumps(tool['parameters'], indent=6)}")
+                                            else:
+                                                print(f"   Parameters: None")
+                                            
+                                            print(f"   Returns: {json.dumps(tool['returns'], indent=6)}")
+                                    
+                                    print("\nServer is running at http://localhost:8000")
+                                    print("Press Ctrl+C to stop the server (container will be removed automatically)")
+                                except json.JSONDecodeError as je:
+                                    print(f"Error parsing JSON: {je}")
+                                    print(f"Raw JSON string: {server_json_str[:200]}...")
+                                
+                                # Keep the script running until user interrupts
+                                try:
+                                    while True:
+                                        time.sleep(1)
+                                except KeyboardInterrupt:
+                                    print("\nStopping container...")
+                                    subprocess.run(["docker", "stop", container_id], check=False)
+                                    print("Container stopped.")
+                            else:
+                                print("\nCould not find JSON details in container logs. Full logs:")
+                                print(logs)
+                                print("\nServer may not have started correctly.")
+                        except subprocess.CalledProcessError as e:
+                            print(f"Error getting container logs: {e}")
+                            print("Attempting to check container status...")
+                            subprocess.run(["docker", "ps", "-a", "--filter", f"id={container_id}"], check=False)
+                            
+                    except subprocess.CalledProcessError as e:
+                        print(f"Error in Docker operation: {e}")
+                        print("Attempting to check Docker status...")
+                        subprocess.run(["docker", "ps"], check=False)
+                    except Exception as e:
+                        print(f"Unexpected error: {e}")
                 except subprocess.CalledProcessError as e:
                     print(f"Error in Docker operation: {e}")
                     print("Attempting to check Docker status...")
@@ -709,9 +743,9 @@ def main():
         
         # Docker-based approach with improved error handling
         image_name = "pocketflow-test"
-        print(f"Building Docker image {image_name} (Dockerfile.test)...")
+        print(f"\nBuilding Docker image {image_name} (Dockerfile.test)...")
         try:
-            subprocess.run(["docker", "build", "-t", image_name, "-f", "Dockerfile.test", "."], check=True)
+            subprocess.run(["docker", "build", "--platform", "linux/amd64", "-t", image_name, "-f", "Dockerfile.test", "."], check=True)
             
             # Create a safe container name (alphanumeric and underscore only)
             safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', tutorial_name)
@@ -767,9 +801,39 @@ def main():
                 match = re.search(r'(\{.*\})', logs, re.DOTALL)
                 if match:
                     print("\nMCP Server JSON details:")
-                    print(match.group(1))
-                    print("\nServer is running at http://localhost:8000")
-                    print("Press Ctrl+C to stop the server (container will be removed automatically)")
+                    server_json_str = match.group(1)
+                    
+                    # Parse the JSON to extract and display server info and tools
+                    try:
+                        server_json = json.loads(server_json_str)
+                        
+                        # Print server information
+                        if "mcpServers" in server_json:
+                            print("\nServer Information:")
+                            print(json.dumps(server_json["mcpServers"], indent=2))
+                        
+                        # Print tools information
+                        if "tools" in server_json:
+                            print("\nAvailable Tools:")
+                            tools = server_json["tools"]
+                            print(f"Found {len(tools)} available tools:")
+                            
+                            for i, tool in enumerate(tools, 1):
+                                print(f"\n{i}. {tool['name']}")
+                                print(f"   Description: {tool['description']}")
+                                
+                                if tool['parameters']:
+                                    print(f"   Parameters: {json.dumps(tool['parameters'], indent=6)}")
+                                else:
+                                    print(f"   Parameters: None")
+                                
+                                print(f"   Returns: {json.dumps(tool['returns'], indent=6)}")
+                        
+                        print("\nServer is running at http://localhost:8000")
+                        print("Press Ctrl+C to stop the server (container will be removed automatically)")
+                    except json.JSONDecodeError as je:
+                        print(f"Error parsing JSON: {je}")
+                        print(f"Raw JSON string: {server_json_str[:200]}...")
                     
                     # Keep the script running until user interrupts
                     try:
