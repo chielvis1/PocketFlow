@@ -23,12 +23,8 @@ def create_mcp_server(name: str, tools: List[Dict[str, Any]],
     Returns:
         Configured FastMCP server instance
     """
-    try:
-        # Check if FastMCP is available, if not use simple mock
-        from fastmcp import FastMCP
-    except ImportError:
-        print("FastMCP not found. Using mock implementation.")
-        return MockMCPServer(name, tools, implementation_guides)
+    # Always use FastMCP; ensure fastmcp is installed
+    from fastmcp import FastMCP
     
     # Create a named server
     mcp = FastMCP(name)
@@ -118,14 +114,9 @@ def start_mcp_server(mcp: Any, host: str = "localhost", port: int = 8000) -> Any
         Running server process information
     """
     try:
-        # Check if we're using the mock
-        if isinstance(mcp, MockMCPServer):
-            return mcp.start(host, port)
-        
-        # For FastMCP
+        # Always start the FastMCP server
         server_process = mcp.serve(host=host, port=port)
         print(f"MCP server started at http://{host}:{port}")
-        
         return {
             "host": host,
             "port": port,

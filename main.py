@@ -148,6 +148,7 @@ def parse_cli_args():
 
 def run_repo_analysis_agent(args):
     """Run the repository analysis agent flow (adapted from original run_agent)."""
+    import os  # Add this import to fix the UnboundLocalError
     configure_logging(logging.DEBUG if args.verbose else logging.INFO)
     
     # If user provided an existing tutorial directory, generate MCP server spec and code only
@@ -177,23 +178,35 @@ def run_repo_analysis_agent(args):
                 print(f"\nBuilding Docker image {image_name} (Dockerfile.test)...")
                 subprocess.run(["docker", "build", "-t", image_name, "-f", "Dockerfile.test", "."], check=True)
                 print(f"Launching Docker container serving tutorial '{tutorial_name}' on localhost:8000 in detached mode...")
-                container_id = subprocess.check_output([
-                    "docker", "run", "-d", "--rm",
-                    "-p", "8000:8000",
-                    "-e", f"TUTORIAL_ROOT=/tutorials/{tutorial_name}",
-                    "-v", f"{host_tutorial_abs}:/tutorials/{tutorial_name}",
-                    image_name
-                ], text=True).strip()
-                print(f"Container started: {container_id}")
-                time.sleep(2)
-                logs = subprocess.check_output(["docker", "logs", container_id], text=True)
-                match = re.search(r'(\{.*\})', logs, re.DOTALL)
-                if match:
-                    print("\nMCP Server JSON details:")
-                    print(match.group(1))
-                else:
-                    print("\nCould not find JSON details in container logs. Full logs:")
-                    print(logs)
+                container_name = f"pocketflow-tutorial-{tutorial_name}"
+                try:
+                    # First try to remove any existing container with the same name
+                    subprocess.run(["docker", "rm", "-f", container_name], check=False, stderr=subprocess.DEVNULL)
+                    
+                    # Run with a specific container name
+                    subprocess.run([
+                        "docker", "run", "-d", "--rm",
+                        "--name", container_name,
+                        "-p", "8000:8000",
+                        "-e", f"TUTORIAL_NAME={tutorial_name}",
+                        "-v", f"{host_tutorial_abs}:/tutorials/{tutorial_name}",
+                        image_name
+                    ], check=True)
+                    
+                    print(f"Container started with name: {container_name}")
+                    time.sleep(2)
+                    logs = subprocess.check_output(["docker", "logs", container_name], text=True)
+                    match = re.search(r'(\{.*\})', logs, re.DOTALL)
+                    if match:
+                        print("\nMCP Server JSON details:")
+                        print(match.group(1))
+                    else:
+                        print("\nCould not find JSON details in container logs. Full logs:")
+                        print(logs)
+                except subprocess.CalledProcessError as e:
+                    print(f"Error running Docker container: {e}")
+                    print("Attempting to check container status...")
+                    subprocess.run(["docker", "ps", "-a"], check=False)
         else:
             print(f"Failed to generate MCP server: {shared.get('error')}")
         return
@@ -487,36 +500,53 @@ def run_tutorial_generation(args):
             print(f"Main tutorial index: {os.path.join(final_dir, 'index.md')}")
             # Prompt to serve tutorial as a knowledge base via MCP
             if input("\nWill you like to serve your generated tutorial as a knowledge base? (y/n): ").strip().lower() == 'y':
-                import yaml, json
-                from utils.mcp import create_mcp_server, start_mcp_server
-                spec_path = os.path.join(final_dir, "mcp_spec.yaml")
-                spec = yaml.safe_load(open(spec_path))
-                tools = spec.get("tools", [])
-                # If implementation guides exist in spec
-                guides = spec.get("implementation_guides", {})
-                server_name = os.path.basename(final_dir)
-                mcp = create_mcp_server(server_name, tools, guides)
-                server_info = start_mcp_server(mcp)
-                print(json.dumps(server_info, indent=2))
-                # Offer to serve tutorial via Docker test container with volume mapping
-                if input("\nServe tutorial via Docker container? (y/n): ").strip().lower() == 'y':
-                    import subprocess, time, re
-                    tutorial_name = os.path.basename(final_dir.rstrip('/'))
-                    host_tutorial_abs = os.path.abspath(final_dir)
-                    image_name = "pocketflow-test"
-                    print(f"\nBuilding Docker image {image_name} (Dockerfile.test)...")
-                    subprocess.run(["docker", "build", "-t", image_name, "-f", "Dockerfile.test", "."], check=True)
-                    print(f"Launching Docker container serving tutorial '{tutorial_name}' on localhost:8000 in detached mode...")
-                    container_id = subprocess.check_output([
+                # Directly proceed to Docker container creation without local MCP server
+                import subprocess, time, re
+                tutorial_name = os.path.basename(final_dir.rstrip('/'))
+                host_tutorial_abs = os.path.abspath(final_dir)
+                
+                # First, verify that the simple_mcp_server.py file exists
+                server_script_path = os.path.join(host_tutorial_abs, "simple_mcp_server.py")
+                if not os.path.exists(server_script_path):
+                    print(f"ERROR: Required file {server_script_path} does not exist.")
+                    print("The MCP server script is missing. Generating it now...")
+                    # Generate the MCP server script and spec
+                    try:
+                        from nodes import GenerateMCPServerNode
+                        mcp_node = GenerateMCPServerNode()
+                        shared_data["tutorial_output_dir"] = host_tutorial_abs
+                        result = mcp_node.run(shared_data)
+                        if shared_data.get("mcp_server_code"):
+                            print(f"Successfully generated MCP server script at: {shared_data['mcp_server_code']}")
+                        else:
+                            print(f"Failed to generate MCP server script. Cannot proceed with Docker container.")
+                            return
+                    except Exception as e:
+                        print(f"Error generating MCP server script: {e}")
+                        print("Cannot proceed with Docker container creation.")
+                        return
+                
+                # Now build and run the Docker container
+                image_name = "pocketflow-test"
+                print(f"\nBuilding Docker image {image_name} (Dockerfile.test)...")
+                container_name = f"pocketflow-tutorial-{tutorial_name}"
+                try:
+                    # First try to remove any existing container with the same name
+                    subprocess.run(["docker", "rm", "-f", container_name], check=False, stderr=subprocess.DEVNULL)
+                    
+                    # Run with a specific container name
+                    subprocess.run([
                         "docker", "run", "-d", "--rm",
+                        "--name", container_name,
                         "-p", "8000:8000",
-                        "-e", f"TUTORIAL_ROOT=/tutorials/{tutorial_name}",
+                        "-e", f"TUTORIAL_NAME={tutorial_name}",
                         "-v", f"{host_tutorial_abs}:/tutorials/{tutorial_name}",
                         image_name
-                    ], text=True).strip()
-                    print(f"Container started: {container_id}")
+                    ], check=True)
+                    
+                    print(f"Container started with name: {container_name}")
                     time.sleep(2)
-                    logs = subprocess.check_output(["docker", "logs", container_id], text=True)
+                    logs = subprocess.check_output(["docker", "logs", container_name], text=True)
                     match = re.search(r'(\{.*\})', logs, re.DOTALL)
                     if match:
                         print("\nMCP Server JSON details:")
@@ -524,6 +554,10 @@ def run_tutorial_generation(args):
                     else:
                         print("\nCould not find JSON details in container logs. Full logs:")
                         print(logs)
+                except subprocess.CalledProcessError as e:
+                    print(f"Error running Docker container: {e}")
+                    print("Attempting to check container status...")
+                    subprocess.run(["docker", "ps", "-a"], check=False)
         else:
             print("\nTutorial generation finished, but output directory might be missing or an error occurred.")
             if shared_data.get("error"):
@@ -571,7 +605,7 @@ def main():
         container_id = subprocess.check_output([
             "docker", "run", "-d", "--rm",
             "-p", "8000:8000",
-            "-e", f"TUTORIAL_ROOT=/tutorials/{tutorial_name}",
+            "-e", f"TUTORIAL_NAME={tutorial_name}",
             "-v", f"{host_tutorial_abs}:/tutorials/{tutorial_name}",
             image_name
         ], text=True).strip()

@@ -2,259 +2,317 @@
 
 ## Table of Contents
 
-1. [**Introduction to the Project and Architectural Overview**  ](chapter_01__Introduction_to_the_Project_and_Architectural_Overview.md)
-2. [**Setting Up the Environment and Configuration**  ](chapter_02__Setting_Up_the_Environment_and_Configuration.md)
-3. [**Building the Root Layout and Global Styling**  ](chapter_03__Building_the_Root_Layout_and_Global_Styling.md)
-4. [**Implementing Places Autocomplete Input Component**  ](chapter_04__Implementing_Places_Autocomplete_Input_Component.md)
-5. [**Integrating Google Maps with Dynamic Location Rendering**  ](chapter_05__Integrating_Google_Maps_with_Dynamic_Location_Rendering.md)
-6. [**Data Flow and Component Interaction**  ](chapter_06__Data_Flow_and_Component_Interaction.md)
-7. [**Styling Components with Tailwind CSS**  ](chapter_07__Styling_Components_with_Tailwind_CSS.md)
-8. [**Best Practices, Accessibility, and Performance Considerations**  ](chapter_08__Best_Practices_Accessibility_and_Performance_Considerations.md)
+1. [**Introduction to the Project and Next.js 13+ Architecture**  ](chapter_01__Introduction_to_the_Project_and_Next.js_13_Architecture.md)
+2. [**Setting Up Styling and Build Tooling with Tailwind CSS and PostCSS**  ](chapter_02__Setting_Up_Styling_and_Build_Tooling_with_Tailwind_CSS_and_PostCSS.md)
+3. [**Working with Google Maps in React: Loading and Displaying the Map**  ](chapter_03__Working_with_Google_Maps_in_React_Loading_and_Displaying_the_Map.md)
+4. [**Building the Places Autocomplete Component**  ](chapter_04__Building_the_Places_Autocomplete_Component.md)
+5. [**State Management and Parent-Child Communication in React**  ](chapter_05__State_Management_and_Parent-Child_Communication_in_React.md)
+6. [**Putting It All Together: Composing the Main Page UI**  ](chapter_06__Putting_It_All_Together_Composing_the_Main_Page_UI.md)
+7. [**Configuration and Extensibility: Tailwind, PostCSS, and Next.js**  ](chapter_07__Configuration_and_Extensibility_Tailwind_PostCSS_and_Next.js.md)
+8. [**Best Practices and Architectural Patterns in Modern React/Next.js Apps**  ](chapter_08__Best_Practices_and_Architectural_Patterns_in_Modern_React_Next.js_Apps.md)
 
 
 ---
 
-# Chapter 1: **Introduction to the Project and Architectural Overview**  
+# Chapter 1: **Introduction to the Project and Next.js 13+ Architecture**  
 
-# Chapter 1: Introduction to the Project and Architectural Overview
+# Chapter 1: Introduction to the Project and Next.js 13+ Architecture
 
-## 1.1 Introduction
+## Introduction
 
-Welcome to this tutorial! In this chapter, we will introduce the core goals of the project and provide a high-level architectural overview. This project is a modern web application built using **Next.js 13+**, which integrates **Google Maps** with **Places Autocomplete** functionality. The app demonstrates how to leverage the latest Next.js features, including the new `app/` directory structure, React Server and Client Components, and utility-first styling with **Tailwind CSS**.
+Welcome to this tutorial! In this chapter, we will introduce the core goals of our project and explore the foundational architecture of Next.js 13+, focusing on the new **App Router** system. Understanding this modern architecture is essential before diving into the coding details of our Next.js + Google Maps API application.
 
-By the end of this chapter, you will understand the key technologies, architectural patterns, and project structure that form the foundation of this repository. This knowledge will prepare you to dive deeper into the codebase and extend the application as needed.
+By the end of this chapter, you will be familiar with the following key concepts:
 
----
+- The project’s overall structure and goals
+- The role of the `app/` directory under Next.js 13+
+- How `layout.tsx` and `page.tsx` files work together
+- The distinction between React Server Components and Client Components
 
-## 1.2 Project Goals
-
-The primary objectives of this project are:
-
-- **Build a performant, SEO-friendly React web app using Next.js 13’s `app/` directory.**
-- **Integrate Google Maps and Places Autocomplete APIs to provide location search and map visualization.**
-- **Demonstrate the use of React Server Components alongside Client Components to optimize rendering and data fetching.**
-- **Use Tailwind CSS combined with PostCSS for fast, responsive, and maintainable styling.**
+Let's get started!
 
 ---
 
-## 1.3 Next.js 13+ and the `app/` Directory Structure
+## 1. Project Overview and Goals
 
-Next.js 13 introduced a new way to organize your application using the `app/` directory, which coexists with or replaces the traditional `pages/` directory. This new structure brings several benefits:
+The project we are building is a modern web application that integrates Google Maps API with Next.js 13+. Our goals include:
 
-- **File-based routing with enhanced layouts:** Routes are defined by folders and files inside `app/`, e.g., `app/page.tsx` for the home page.
-- **Nested layouts and templates:** You can define reusable layouts (`layout.tsx`) that wrap pages, enabling consistent UI structures.
-- **Server Components by default:** Components under `app/` are React Server Components unless marked otherwise.
+- Leveraging Next.js 13's **App Router** for improved routing and layouts
+- Creating a scalable directory structure under the `app/` folder
+- Utilizing React Server Components for better performance and SEO
+- Integrating Client Components where interactive UI is needed
+- Building reusable layouts and pages to maintain clean code
 
-### Example: Basic `app/` directory layout
+This tutorial will guide you through these concepts step-by-step, starting from the foundational architecture.
+
+---
+
+## 2. Next.js 13+ App Router and Directory Structure
+
+### What is the App Router?
+
+Next.js 13 introduced a new **App Router** system, which is a modern approach to routing that uses a file-based convention inside the `app/` directory. This is a shift from the older `pages/` directory model.
+
+The `app/` directory enables:
+
+- Nested layouts
+- Server components by default
+- Colocation of components, routes, and layouts
+- Enhanced data fetching capabilities
+
+### Basic Directory Structure
+
+Here is a simplified example of the typical directory structure in our project:
 
 ```
 app/
-├── layout.tsx         # Root layout wrapping all pages
-├── page.tsx           # Home page component
-├── map/
-│   ├── page.tsx       # Map page
-│   └── layout.tsx     # Optional nested layout for map routes
-└── components/
-    ├── Map.tsx        # Client component for rendering Google Map
-    └── SearchBox.tsx  # Client component for Places Autocomplete
+├── layout.tsx
+├── page.tsx
+├── dashboard/
+│   ├── layout.tsx
+│   └── page.tsx
+├── maps/
+│   └── page.tsx
+└── styles/
+    └── globals.css
 ```
+
+### Explanation
+
+- **`layout.tsx`** files define layouts that wrap around child pages or nested layouts. Think of them as templates that provide consistent UI elements (headers, footers, navigation).
+- **`page.tsx`** files represent the actual pages that users navigate to.
+- Nested folders like `dashboard/` or `maps/` represent nested routes and can have their own layouts and pages.
 
 ---
 
-## 1.4 React Server Components vs Client Components
+## 3. Understanding `layout.tsx` vs `page.tsx`
 
-Next.js 13 leverages **React Server Components (RSC)** to enable rendering parts of the UI on the server, which can improve performance and reduce client-side JavaScript bundle sizes.
+### `layout.tsx`
 
-- **Server Components:**
-  - Rendered on the server.
-  - Can fetch data directly without incurring client-side bundle cost.
-  - Cannot use browser-only APIs (e.g., `window`, `document`).
-  - Default component type in the `app/` directory.
+- Acts as a wrapper component for all pages and nested layouts inside its directory.
+- Used to define UI elements that persist across multiple pages, such as navigation bars, footers, or global styles.
+- Supports defining metadata (like `<head>` tags) and global error handling.
+- By default, layouts render **React Server Components**.
 
-- **Client Components:**
-  - Rendered on the client.
-  - Can use React state, effects, browser APIs.
-  - Must be explicitly marked with `"use client";` directive at the top of the file.
-
-### Example: Declaring a Client Component
+### Example of a root `layout.tsx`:
 
 ```tsx
-"use client";
+// app/layout.tsx
+import './styles/globals.css'
 
-import React, { useState } from "react";
-
-export default function SearchBox() {
-  const [query, setQuery] = useState("");
-
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <input
-      type="text"
-      value={query}
-      onChange={(e) => setQuery(e.target.value)}
-      placeholder="Search places..."
-    />
-  );
+    <html lang="en">
+      <body>
+        <header>
+          <h1>My Next.js + Google Maps App</h1>
+        </header>
+        <main>{children}</main>
+        <footer>© 2024 My Company</footer>
+      </body>
+    </html>
+  )
 }
 ```
 
-### How This Project Uses Server and Client Components
+### `page.tsx`
 
-- **Server Components:** Used for layout, page structure, and data fetching where possible.
-- **Client Components:** Used for interactive elements such as the Google Maps rendering and the autocomplete input, which require access to the browser environment.
+- Represents the content of a specific route.
+- Rendered inside the nearest parent layout.
+- Can also be React Server Components by default.
+- Responsible for fetching data and rendering UI for the current route.
 
----
-
-## 1.5 Tailwind CSS and PostCSS Integration
-
-Styling in this project uses **Tailwind CSS**, a utility-first CSS framework that allows you to style your application using predefined classes directly in your markup.
-
-- Tailwind promotes rapid UI development with minimal custom CSS.
-- The project uses **PostCSS** to process Tailwind directives and apply vendor prefixes, ensuring compatibility across browsers.
-
-### Tailwind Example
+### Example of a simple `page.tsx`:
 
 ```tsx
-<div className="max-w-4xl mx-auto p-4">
-  <h1 className="text-3xl font-bold mb-6">Welcome to the Map App</h1>
-  <p className="text-gray-600">Search for places and explore the map below.</p>
-</div>
-```
-
-The above snippet centers content with padding, sets a large bold heading, and styles paragraph text with a muted color — all without writing any custom CSS.
-
----
-
-## 1.6 Google Maps and Places Autocomplete Integration
-
-A key feature of this project is the integration of Google Maps and the Places Autocomplete API, which allows users to search for locations with suggestions and see them on an interactive map.
-
-- The **Google Maps JavaScript API** is loaded in a Client Component that renders the map.
-- The **Places Autocomplete API** is used in a controlled input box that suggests places as the user types.
-- The app manages API keys and loading scripts efficiently to maintain performance and best practices.
-
----
-
-## 1.7 Overview of Project Structure
-
-Here is a simplified view of the main folders and files:
-
-```
-app/
-├── layout.tsx          # Root layout and global styles
-├── page.tsx            # Home page with search and map
-├── components/
-│   ├── Map.tsx         # Client Component for Google Map
-│   ├── SearchBox.tsx   # Client Component for search input with autocomplete
-│   └── ...
-├── styles/
-│   ├── globals.css     # Tailwind base styles and customizations
-│   └── ...
-public/
-├── favicon.ico
-├── ...
-tailwind.config.js      # Tailwind CSS configuration
-postcss.config.js       # PostCSS configuration
-next.config.js          # Next.js config file
+// app/page.tsx
+export default function HomePage() {
+  return (
+    <section>
+      <h2>Welcome to the Home Page</h2>
+      <p>This is the main landing page of our app.</p>
+    </section>
+  )
+}
 ```
 
 ---
 
-## 1.8 Summary
+## 4. React Server Components vs Client Components
 
-In this chapter, we introduced the project’s goals and architectural design, emphasizing the modern Next.js 13 framework with its `app/` directory and React Server Components. We explained the distinction between Server and Client Components, which is critical for understanding where and how code executes. Additionally, we covered the use of Tailwind CSS for styling and the integration of Google Maps and Places Autocomplete APIs for rich location-based functionality.
+### React Server Components (RSC)
 
-With this foundation, you are now ready to explore the codebase in detail and follow along with subsequent chapters that will guide you through implementing and customizing each feature.
+- Introduced in React 18 and adopted by Next.js 13+
+- Rendered on the server by default in the `app/` directory
+- Can fetch data directly without exposing APIs to the client
+- Results in faster initial load times and improved SEO
+- Do **not** support client-side interactivity like event handlers (`onClick`, state hooks, etc.)
+
+### Client Components
+
+- Needed when the UI requires interactivity (buttons, forms, maps interactions)
+- Explicitly opt-in by adding `"use client"` directive at the top of the file
+- Render on the client side and can use React hooks like `useState`, `useEffect`
+- Example use case: a Google Maps component with draggable pins or user input
+
+### Example of a Client Component:
+
+```tsx
+// app/components/InteractiveMap.tsx
+'use client'
+
+import { useState } from 'react'
+
+export default function InteractiveMap() {
+  const [location, setLocation] = useState({ lat: 0, lng: 0 })
+
+  return (
+    <div>
+      <p>Current location: {location.lat}, {location.lng}</p>
+      {/* Google Maps UI and handlers here */}
+    </div>
+  )
+}
+```
 
 ---
 
-*End of Chapter 1*
+## 5. Putting It All Together: Project File Structure and Flow
+
+The flow of rendering in a Next.js 13+ App Router project generally looks like this:
+
+1. **Root `layout.tsx`** wraps the entire app, providing global UI and metadata.
+2. Nested layouts (e.g., `dashboard/layout.tsx`) wrap their respective child pages.
+3. Specific `page.tsx` files render the content for each route.
+4. Server Components handle data fetching and markup generation.
+5. Client Components handle interactivity where needed.
+
+This layered approach promotes modularity, code reuse, and performance optimizations.
 
 ---
 
-# Chapter 2: **Setting Up the Environment and Configuration**  
+## Conclusion
 
-# Chapter 2: Setting Up the Environment and Configuration
+In this chapter, we've laid the groundwork for working with Next.js 13+ by exploring:
 
-Setting up a solid development environment and configuring key tools correctly is essential for building scalable and maintainable applications. In this chapter, we will walk through configuring the core parts of our Next.js project, focusing on Tailwind CSS, PostCSS, and minimal Next.js configuration. These configurations enable streamlined styling, efficient builds, and tailor the development experience to our needs.
+- The project goals and how Next.js 13+ App Router helps achieve them
+- The significance of the `app/` directory and its file structure
+- The difference between `layout.tsx` and `page.tsx`
+- How React Server Components and Client Components complement each other
+
+With this foundational understanding, you're now ready to start building pages, integrating components, and exploring advanced features in the upcoming chapters.
+
+Happy coding!
+
+---
+
+# Chapter 2: **Setting Up Styling and Build Tooling with Tailwind CSS and PostCSS**  
+
+# Chapter 2: Setting Up Styling and Build Tooling with Tailwind CSS and PostCSS
+
+In this chapter, we will integrate **Tailwind CSS** into our Next.js project, a modern utility-first CSS framework that greatly simplifies building responsive and customizable user interfaces. We will also configure **PostCSS**, which Tailwind uses to process and optimize CSS. Additionally, we will cover how to import global styles, customize your Tailwind theme, and optimize fonts using Next.js’s built-in Google Fonts integration.
+
+By the end of this chapter, you will have a clear understanding of how to set up your styling environment and apply scalable, maintainable styles across your Next.js app.
 
 ---
 
 ## Table of Contents
 
-- [2.1 Introduction](#21-introduction)  
-- [2.2 Configuring Tailwind CSS](#22-configuring-tailwind-css)  
-- [2.3 Setting Up PostCSS](#23-setting-up-postcss)  
-- [2.4 Minimal Next.js Configuration](#24-minimal-nextjs-configuration)  
-- [2.5 How Configuration Files Influence the Project](#25-how-configuration-files-influence-the-project)  
-- [2.6 Conclusion](#26-conclusion)  
+- [Why Tailwind CSS?](#why-tailwind-css)
+- [Installing Tailwind CSS and PostCSS](#installing-tailwind-css-and-postcss)
+- [Configuring Tailwind: `tailwind.config.ts`](#configuring-tailwind-tailwindconfigts)
+- [Setting Up PostCSS: `postcss.config.js`](#setting-up-postcss-postcssconfigjs)
+- [Utility-First Styling Principles](#utility-first-styling-principles)
+- [Global CSS Imports in `layout.tsx`](#global-css-imports-in-layouttsx)
+- [Theme Customization](#theme-customization)
+- [Font Optimization with Next.js Google Fonts](#font-optimization-with-nextjs-google-fonts)
+- [Summary](#summary)
 
 ---
 
-## 2.1 Introduction
+## Why Tailwind CSS?
 
-This project uses **Next.js** (v13+) as the React framework, along with **Tailwind CSS** for utility-first styling, and **PostCSS** for CSS transformations. Tailwind CSS’s Just-in-Time (JIT) mode enhances developer experience by generating styles on demand, making builds faster and smaller.
+Tailwind CSS is a **utility-first CSS framework** that provides a set of low-level, atomic classes you compose to build any design directly in your markup. Unlike traditional CSS, you don’t write custom classes for each style — instead, you combine utility classes like `p-4`, `text-center`, or `bg-blue-500` to create your UI.
 
-The configuration files we will focus on are:
+This approach encourages:
 
-- `tailwind.config.ts` — Tailwind CSS configuration  
-- `postcss.config.js` — PostCSS plugins and setup  
-- `next.config.js` — Next.js core configuration  
+- Rapid UI development
+- Consistent styling across components
+- Easy responsiveness and theming
+- Reduced CSS bloat and better maintainability
 
-Understanding and properly setting up these files ensures your styling and build process works seamlessly.
+Tailwind is especially popular in React/Next.js projects due to its synergy with component-based architectures.
 
 ---
 
-## 2.2 Configuring Tailwind CSS
+## Installing Tailwind CSS and PostCSS
 
-Tailwind CSS is a utility-first CSS framework that allows you to rapidly build custom designs. The configuration file `tailwind.config.ts` is where you customize the default Tailwind setup.
+To get started, you need to install Tailwind CSS along with its peer dependencies, including PostCSS and Autoprefixer.
 
-### Key Points in Tailwind Config:
+From your project root, run:
 
-- **`content`**: Specifies all the files Tailwind scans for class names to generate styles (critical for JIT).  
-- **`theme`**: Customize colors, fonts, spacing, and extend the default theme.  
-- **`plugins`**: Add Tailwind plugins for additional utilities or components.
+```bash
+npm install -D tailwindcss postcss autoprefixer
+```
 
-### Example: `tailwind.config.ts`
+Then initialize Tailwind CSS configuration files:
+
+```bash
+npx tailwindcss init -p
+```
+
+This command creates two files:
+
+- `tailwind.config.js` (or `.ts` if you rename it)
+- `postcss.config.js`
+
+We will configure these next.
+
+---
+
+## Configuring Tailwind: `tailwind.config.ts`
+
+Rename `tailwind.config.js` to `tailwind.config.ts` if you want to use TypeScript for type-safety and better DX.
+
+Here’s a typical `tailwind.config.ts` setup for a Next.js project using the App Router (`app/` directory):
 
 ```ts
-import type { Config } from 'tailwindcss';
+import type { Config } from 'tailwindcss'
 
 const config: Config = {
   content: [
-    './app/**/*.{js,ts,jsx,tsx}',  // Includes Next.js app directory files
-    './components/**/*.{js,ts,jsx,tsx}',
+    './app/**/*.{ts,tsx}', // Scans Next.js app directory for class names
+    './components/**/*.{ts,tsx}', // Include components directory if applicable
   ],
   theme: {
     extend: {
       colors: {
-        primary: '#1D4ED8',   // Custom primary color
-        secondary: '#9333EA',
+        primary: '#2563eb', // Example custom color
       },
       fontFamily: {
-        sans: ['Inter', 'sans-serif'],
+        sans: ['Inter', 'ui-sans-serif', 'system-ui'], // Custom font family
       },
     },
   },
   plugins: [],
-  mode: 'jit',  // Enables Just-In-Time mode for fast builds and on-demand styles
-};
+}
 
-export default config;
+export default config
 ```
 
-### Explanation:
+### Key points:
 
-- The `content` array tells Tailwind to scan all `.tsx` and `.ts` files in the `app` and `components` folders to detect used classes and generate CSS accordingly.
-- Extending the theme customizes default styles without overriding Tailwind’s core.
-- Enabling `mode: 'jit'` activates Just-In-Time compilation, producing only the CSS you need, improving performance.
+- **content**: Specifies files Tailwind scans to generate CSS. Including all `.tsx` files under your `app/` and `components/` directories ensures Tailwind picks up all class names.
+- **theme.extend**: Allows you to add or override design tokens like colors, fonts, spacing, etc.
+- **plugins**: Tailwind’s ecosystem includes many plugins for forms, typography, etc., which you can add here.
 
 ---
 
-## 2.3 Setting Up PostCSS
+## Setting Up PostCSS: `postcss.config.js`
 
-PostCSS is a tool for transforming CSS with JavaScript plugins. Tailwind CSS uses PostCSS under the hood to process its directives like `@tailwind base;`.
+PostCSS is a tool for transforming CSS with JavaScript plugins. Tailwind relies on PostCSS to process your styles and add vendor prefixes.
 
-### `postcss.config.js` Example
+Your `postcss.config.js` should look like this:
 
 ```js
 module.exports = {
@@ -262,638 +320,632 @@ module.exports = {
     tailwindcss: {},
     autoprefixer: {},
   },
-};
+}
 ```
 
-### Explanation:
-
-- **`tailwindcss` plugin**: Processes Tailwind’s directives and utilities.  
-- **`autoprefixer` plugin**: Adds vendor prefixes automatically for broader browser support.
-
-This minimal setup is sufficient for most Tailwind projects. PostCSS transforms your CSS before it reaches the browser, ensuring compatibility and enabling Tailwind features.
+This config tells PostCSS to use the Tailwind plugin first (which generates the utility classes) and then Autoprefixer (which adds vendor prefixes like `-webkit-` for cross-browser compatibility).
 
 ---
 
-## 2.4 Minimal Next.js Configuration
+## Utility-First Styling Principles
 
-Next.js provides a powerful configuration file, `next.config.js`, which allows you to customize the build process, enable experimental features, and configure environment variables.
-
-### Example: `next.config.js`
-
-```js
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  reactStrictMode: true, // Helps catch potential issues during development
-  swcMinify: true,       // Uses the faster SWC compiler for minification
-  experimental: {
-    appDir: true,        // Enables the new app directory structure (Next.js 13+)
-  },
-};
-
-module.exports = nextConfig;
-```
-
-### Explanation:
-
-- `reactStrictMode` enables React’s strict mode, which highlights potential problems in your application.  
-- `swcMinify` leverages the Rust-based SWC compiler for faster builds.  
-- `experimental.appDir` enables the new Next.js 13+ `app` directory architecture, supporting React Server Components and improved routing.
-
----
-
-## 2.5 How Configuration Files Influence the Project
-
-These configuration files form the backbone of your styling and build pipeline:
-
-- **Tailwind CSS config (`tailwind.config.ts`)** controls which CSS classes are generated, customizing your design system and ensuring only necessary styles are bundled.  
-- **PostCSS config (`postcss.config.js`)** defines how CSS is processed and transformed, ensuring compatibility and enabling Tailwind directives.  
-- **Next.js config (`next.config.js`)** customizes the framework’s behavior, enabling features like React strict mode, new routing paradigms, and optimized builds.
-
-Together, these configurations enable a smooth developer experience with:
-
-- Fast build times  
-- Predictable styling  
-- Modern framework features  
-- Maintainable and scalable codebase  
-
-They embody the principle of **configuration as code**, meaning your development environment and build process are reproducible and version-controlled.
-
----
-
-## 2.6 Conclusion
-
-In this chapter, we set up the foundational configuration for our Next.js project:
-
-- Tailwind CSS configured with JIT mode for efficient styling  
-- PostCSS configured to process Tailwind and autoprefix CSS  
-- Minimal but effective Next.js config enabling strict mode and the new app directory  
-
-Understanding these configurations is critical before diving into building UI components or integrating features like Google Maps and places autocomplete. With this environment ready, you can confidently implement design and functionality with modern, performant tools.
-
----
-
-Next up, we will explore the core abstractions and component relationships within this codebase to help you navigate and extend the project effectively.
-
----
-
-# Chapter 3: **Building the Root Layout and Global Styling**  
-
-# Chapter 3: Building the Root Layout and Global Styling
-
-In this chapter, we will implement the `RootLayout` component (`app/layout.tsx`), which serves as the foundational layout for our Next.js 13 application. We will explore how layouts work in Next.js 13, how to set important metadata for SEO and Progressive Web App (PWA) support, and how to manage global CSS and font imports. Additionally, we’ll discuss accessibility best practices and introduce global theming to ensure a consistent user experience across the app.
-
----
-
-## Table of Contents
-
-- [3.1 Introduction to Layouts in Next.js 13](#31-introduction-to-layouts-in-nextjs-13)  
-- [3.2 Creating the RootLayout Component](#32-creating-the-rootlayout-component)  
-- [3.3 Managing Metadata for SEO and PWA](#33-managing-metadata-for-seo-and-pwa)  
-- [3.4 Importing Global CSS and Fonts](#34-importing-global-css-and-fonts)  
-- [3.5 Accessibility Considerations](#35-accessibility-considerations)  
-- [3.6 Implementing Global Theming](#36-implementing-global-theming)  
-- [3.7 Conclusion](#37-conclusion)  
-
----
-
-## 3.1 Introduction to Layouts in Next.js 13
-
-Next.js 13 introduces a powerful new `app/` directory structure and a special concept called **layouts**. Unlike traditional pages, layouts are React Server Components that wrap around your pages and other nested layouts, defining a shared UI structure.
-
-### Why use Layouts?
-
-- **Consistent UI**: Layouts allow you to define headers, footers, navigation, or any other persistent UI elements once, and share them across many pages.
-- **Performance**: Because layouts are React Server Components, they can fetch data on the server and send fully rendered HTML to the client.
-- **Nested Layouts**: You can create layouts at different folder levels, enabling scoped UI and data management.
-
-The `RootLayout` is special because it wraps your entire app, setting the stage for all pages and nested layouts.
-
----
-
-## 3.2 Creating the RootLayout Component
-
-The root layout lives at `app/layout.tsx`. Here’s a simple example illustrating its structure:
+Instead of writing custom CSS classes, you apply Tailwind’s utility classes directly in your JSX/TSX:
 
 ```tsx
-// app/layout.tsx
-import './globals.css';
-import { Inter } from 'next/font/google';
+export default function Button() {
+  return (
+    <button className="bg-primary text-white px-4 py-2 rounded hover:bg-blue-600">
+      Click Me
+    </button>
+  )
+}
+```
+
+This approach:
+
+- Eliminates the need for separate CSS files for many components
+- Makes it easier to see styles inline, improving maintainability
+- Promotes consistency by using predefined design tokens (colors, spacing, etc.)
+
+---
+
+## Global CSS Imports in `layout.tsx`
+
+Next.js App Router uses `layout.tsx` files to define layouts wrapping your pages. This is the ideal place to import global CSS, including Tailwind’s base styles.
+
+Create or edit `app/layout.tsx`:
+
+```tsx
+import './globals.css' // Import Tailwind base styles and your custom global styles
+import { Inter } from 'next/font/google'
 
 const inter = Inter({
   subsets: ['latin'],
-  variable: '--font-inter',
-});
+  variable: '--font-sans',
+})
 
 export const metadata = {
   title: 'My Next.js App',
-  description: 'An app integrating Google Maps and Places Autocomplete',
-};
+  description: 'Demo integrating Tailwind CSS',
+}
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={inter.variable}>
-      <head />
-      <body>
-        {/* Global header can go here */}
-        {children}
-        {/* Global footer can go here */}
-      </body>
+      <body className="bg-gray-50 font-sans">{children}</body>
     </html>
+  )
+}
+```
+
+### About `globals.css`
+
+Your `globals.css` file will typically include:
+
+```css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* You can add any custom global styles here */
+```
+
+This structure is required for Tailwind to inject its styles properly.
+
+---
+
+## Theme Customization
+
+Tailwind’s theme can be extended in `tailwind.config.ts` to match your design system. For example, adding colors, fonts, and spacing:
+
+```ts
+theme: {
+  extend: {
+    colors: {
+      primary: '#2563eb',
+      secondary: '#9333ea',
+    },
+    fontFamily: {
+      sans: ['Inter', 'ui-sans-serif', 'system-ui'],
+      mono: ['Fira Code', 'monospace'],
+    },
+    spacing: {
+      128: '32rem',
+    },
+  },
+},
+```
+
+You can then use these custom tokens in your classes like `bg-primary`, `text-secondary`, or `p-128`.
+
+---
+
+## Font Optimization with Next.js Google Fonts
+
+Next.js 13+ provides built-in Google Fonts optimization via the `next/font/google` module. This approach:
+
+- Automatically optimizes font loading
+- Avoids layout shifts (FOIT/FOUT)
+- Supports subset loading and font-display control
+
+Example usage with Inter font in `layout.tsx` (as shown above):
+
+```tsx
+import { Inter } from 'next/font/google'
+
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-sans',
+})
+
+<body className={`font-sans ${inter.variable}`}>{children}</body>
+```
+
+This imports the font and assigns a CSS variable, which you can use in your Tailwind config or inline styles.
+
+---
+
+## Summary
+
+In this chapter, you learned how to:
+
+- Install and configure Tailwind CSS and PostCSS in your Next.js project
+- Use the utility-first CSS methodology for rapid and maintainable styling
+- Import global styles and Tailwind base styles via `layout.tsx` and `globals.css`
+- Customize your Tailwind theme to fit your brand and design
+- Optimize font loading with Next.js Google Fonts integration
+
+With this foundation, you’re ready to build beautifully styled, fast, and scalable Next.js applications with confidence.
+
+Next up, we will dive into building interactive UI components that leverage this styling setup effectively.
+
+---
+
+# Chapter 3: **Working with Google Maps in React: Loading and Displaying the Map**  
+
+# Chapter 3: Working with Google Maps in React: Loading and Displaying the Map
+
+In this chapter, we will dive into integrating Google Maps into a React application using the `@react-google-maps/api` library. This library provides React-friendly abstractions over the Google Maps JavaScript API, making it easier to load the map script asynchronously and render interactive maps with markers.
+
+We will cover:
+
+- How to load the Google Maps JavaScript API asynchronously using the `useLoadScript` hook.
+- Rendering a map centered on a default location using the `<GoogleMap>` component.
+- Adding a marker to the map using the `<MarkerF>` component.
+
+By the end of this chapter, you will understand the core concepts behind integrating Google Maps into a React app and be able to render a map with a marker in your project.
+
+---
+
+## 3.1 Introduction to `@react-google-maps/api`
+
+Google Maps API is powerful but can be cumbersome to integrate directly into React apps due to its imperative and script-based nature. The `@react-google-maps/api` library abstracts away the manual script loading and provides declarative React components and hooks to work with maps.
+
+Key components and hooks we'll use:
+
+- **`useLoadScript`**: A React hook that asynchronously loads the Google Maps JavaScript API script. It manages the loading state and errors.
+- **`<GoogleMap>`**: A React component that renders the map inside your component tree. It accepts props like `center`, `zoom`, and event handlers.
+- **`<MarkerF>`**: A React component representing a marker on the map. The `F` suffix indicates a functional component version optimized for React.
+
+This library helps us keep our React app declarative and clean while leveraging the full power of Google Maps.
+
+---
+
+## 3.2 Setting Up the Google Maps API Key
+
+Before loading the map, you need a Google Maps API key with Maps JavaScript API enabled:
+
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
+2. Create or select a project.
+3. Enable the **Maps JavaScript API**.
+4. Create an API key.
+5. Restrict the key to your app's domain (recommended).
+6. Store this key securely (e.g., environment variables).
+
+In a Next.js app, you typically store it in a `.env.local` file:
+
+```env
+NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_api_key_here
+```
+
+The `NEXT_PUBLIC_` prefix exposes the variable to the browser.
+
+---
+
+## 3.3 Loading the Google Maps Script Asynchronously with `useLoadScript`
+
+The Google Maps API is loaded via a script tag, which is asynchronous and external. `useLoadScript` handles this for us:
+
+- It injects the script tag.
+- Tracks loading status and errors.
+- Prevents loading the script multiple times.
+
+Here is an example of how to use it:
+
+```tsx
+import React from 'react';
+import { useLoadScript } from '@react-google-maps/api';
+
+const libraries = ['places']; // Optional libraries you might need
+
+function MapLoader() {
+  const { isLoaded, loadError } = useLoadScript({
+    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '',
+    libraries,
+  });
+
+  if (loadError) return <div>Error loading maps</div>;
+  if (!isLoaded) return <div>Loading Maps...</div>;
+
+  return <Map />;
+}
+```
+
+**Explanation:**
+
+- `isLoaded`: Boolean indicating whether the script has finished loading.
+- `loadError`: Any error encountered during script loading.
+- Once loaded, you can render the map component safely.
+
+---
+
+## 3.4 Rendering the Map with `<GoogleMap>`
+
+After the script loads, you can render the map using the `<GoogleMap>` component.
+
+Example:
+
+```tsx
+import React from 'react';
+import { GoogleMap, MarkerF } from '@react-google-maps/api';
+
+const containerStyle = {
+  width: '100%',
+  height: '400px',
+};
+
+// Default center coordinates (e.g., New York City)
+const center = {
+  lat: 40.7128,
+  lng: -74.0060,
+};
+
+function Map() {
+  return (
+    <GoogleMap
+      mapContainerStyle={containerStyle}
+      center={center}
+      zoom={12}
+    >
+      <MarkerF position={center} />
+    </GoogleMap>
   );
 }
 ```
 
-### Explanation
+**Key props:**
 
-- **HTML Structure**: The root layout returns the entire HTML skeleton (`<html>`, `<body>`) required for your app.
-- **Font Integration**: We use Next.js’s built-in Google Fonts optimization to load the Inter font and apply it globally using a CSS variable.
-- **Metadata**: `metadata` is an exported object Next.js uses to inject SEO-relevant meta tags.
-- **`children` Prop**: Represents the nested pages or layouts rendered inside this root layout.
+- `mapContainerStyle`: CSS styles for the map container. Width and height must be set explicitly.
+- `center`: Latitude and longitude to center the map.
+- `zoom`: Zoom level (1–20, where higher numbers zoom in closer).
 
 ---
 
-## 3.3 Managing Metadata for SEO and PWA
+## 3.5 Adding a Marker with `<MarkerF>`
 
-SEO and PWA metadata improve your app’s discoverability and functionality on mobile devices.
+Markers indicate specific locations on the map.
 
-### Defining Metadata in Next.js 13
+- `<MarkerF>` accepts a `position` prop with latitude and longitude.
+- It can accept event handlers like `onClick` for interactivity.
 
-You can export a `metadata` object from your layout or page files containing relevant meta information:
+Example:
 
 ```tsx
-export const metadata = {
-  title: 'My Next.js App',
-  description: 'An app integrating Google Maps and Places Autocomplete',
-  icons: {
-    icon: '/favicon.ico',
-    apple: '/apple-touch-icon.png',
-  },
-  manifest: '/site.webmanifest',
-  themeColor: '#317EFB',
-  openGraph: {
-    title: 'My Next.js App',
-    description: 'Google Maps and Places autocomplete integration',
-    url: 'https://myapp.example.com',
-    siteName: 'Next.js Maps',
-    images: [
-      {
-        url: '/og-image.png',
-        width: 1200,
-        height: 630,
-        alt: 'Next.js Maps',
-      },
-    ],
-    locale: 'en_US',
-    type: 'website',
-  },
+<MarkerF
+  position={{ lat: 40.7128, lng: -74.0060 }}
+  onClick={() => alert('Marker clicked!')}
+/>
+```
+
+In our simple example, we add one marker centered on the map.
+
+---
+
+## 3.6 Full Example: Loading and Displaying a Map with a Marker
+
+Putting it all together:
+
+```tsx
+import React from 'react';
+import { useLoadScript, GoogleMap, MarkerF } from '@react-google-maps/api';
+
+const containerStyle = {
+  width: '100%',
+  height: '400px',
+};
+
+const center = {
+  lat: 40.7128,
+  lng: -74.0060,
+};
+
+const libraries = ['places'];
+
+export default function MapLoader() {
+  const { isLoaded, loadError } = useLoadScript({
+    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '',
+    libraries,
+  });
+
+  if (loadError) return <div>Error loading maps</div>;
+  if (!isLoaded) return <div>Loading Maps...</div>;
+
+  return (
+    <GoogleMap
+      mapContainerStyle={containerStyle}
+      center={center}
+      zoom={12}
+    >
+      <MarkerF position={center} />
+    </GoogleMap>
+  );
+}
+```
+
+This component:
+
+- Loads the Google Maps script asynchronously.
+- Displays loading or error states.
+- Renders the map centered on NYC.
+- Places a marker at the center.
+
+---
+
+## 3.7 Summary
+
+In this chapter, you learned how to:
+
+- Use the `@react-google-maps/api` library to load the Google Maps JavaScript API asynchronously with `useLoadScript`.
+- Render a Google Map centered on a default location using the `<GoogleMap>` component.
+- Add a marker to the map with the `<MarkerF>` component.
+
+These abstractions allow you to work with Google Maps in React declaratively and efficiently, handling script loading and map rendering seamlessly.
+
+In the next chapter, we will explore how to customize the map further and handle user interactions such as clicking and dragging markers.
+
+---
+
+# Chapter 4: **Building the Places Autocomplete Component**  
+
+# Chapter 4: Building the Places Autocomplete Component
+
+In this chapter, we will build the `PlacesAutocomplete` component—a core UI piece that leverages the Google Places API to provide location suggestions as users type. Using the popular `use-places-autocomplete` hook, we'll manage user input, display suggestions dynamically, handle selection events, and address important accessibility concerns to ensure a smooth and inclusive user experience.
+
+---
+
+## 4.1 Introduction to `PlacesAutocomplete`
+
+The `PlacesAutocomplete` component acts as an input field with an autocomplete dropdown, powered by Google Places API. As a user types, it fetches suggested places matching the input, and lets users select a suggestion to update the UI or trigger further actions.
+
+At its core, this component:
+
+- Integrates with the Google Places API via the `use-places-autocomplete` React hook.
+- Manages input state and suggestion lifecycle.
+- Exposes callback props to notify parent components of selection.
+- Implements accessibility best practices for keyboard navigation and screen readers.
+
+---
+
+## 4.2 Setting Up the `use-places-autocomplete` Hook
+
+The `use-places-autocomplete` hook abstracts the complexity of dealing with Google Places API requests and response handling. It internally manages the autocomplete service, fetching suggestions as input changes.
+
+### Installation
+
+If not already added, install the hook:
+
+```bash
+npm install use-places-autocomplete
+```
+
+or
+
+```bash
+yarn add use-places-autocomplete
+```
+
+### Basic Usage
+
+```tsx
+import usePlacesAutocomplete from "use-places-autocomplete";
+
+function Component() {
+  const {
+    ready,      // Boolean indicating if the Google Places API is loaded
+    value,      // Current input value
+    suggestions, // Suggestions object: { status, data }
+    setValue,   // Function to update input value
+    clearSuggestions, // Clears the suggestions list
+  } = usePlacesAutocomplete();
+
+  // ...
+}
+```
+
+---
+
+## 4.3 Creating the `PlacesAutocomplete` Component
+
+Let's build the component step-by-step.
+
+### 4.3.1 Component Props
+
+To make it reusable and flexible, our component will accept:
+
+- `onSelect`: A callback invoked when a user selects a place suggestion.
+- `placeholder`: Optional placeholder text for the input.
+- `defaultValue`: Optional initial value of the input.
+
+```tsx
+interface PlacesAutocompleteProps {
+  onSelect: (address: string, placeId?: string) => void;
+  placeholder?: string;
+  defaultValue?: string;
+}
+```
+
+### 4.3.2 Managing Input and Suggestions
+
+We'll use the `use-places-autocomplete` hook to manage input and suggestions.
+
+```tsx
+import React, { useId } from "react";
+import usePlacesAutocomplete, { Suggestion } from "use-places-autocomplete";
+
+export const PlacesAutocomplete: React.FC<PlacesAutocompleteProps> = ({
+  onSelect,
+  placeholder = "Search places...",
+  defaultValue = "",
+}) => {
+  const id = useId();
+
+  const {
+    ready,
+    value,
+    suggestions: { status, data },
+    setValue,
+    clearSuggestions,
+  } = usePlacesAutocomplete({
+    requestOptions: {
+      /* Optional: location biasing, radius, types, etc. */
+    },
+    debounce: 300,
+  });
+
+  // Handle user typing
+  const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setValue(e.target.value);
+  };
+
+  // Handle selection of a suggestion
+  const handleSelect = (suggestion: Suggestion) => {
+    setValue(suggestion.description, false);
+    clearSuggestions();
+    onSelect(suggestion.description, suggestion.place_id);
+  };
+
+  // ...
+
+  return (
+    <div>
+      {/* Input and suggestions UI */}
+    </div>
+  );
 };
 ```
 
-### What this does:
-
-- **Title and Description**: Shown on search results.
-- **Icons and Manifest**: Enables PWA features like "Add to Home Screen."
-- **OpenGraph Tags**: Improve link previews on social media.
-- **Theme Color**: Sets the browser toolbar color on mobile.
-
-Next.js automatically injects this metadata into the `<head>` of your document.
+> **Note:** We use `useId` to generate unique ids for accessibility attributes.
 
 ---
 
-## 3.4 Importing Global CSS and Fonts
+## 4.4 Displaying Suggestions
 
-In Next.js 13’s `app/` directory, global CSS must be imported at the root layout level (`app/layout.tsx`):
+### 4.4.1 Rendering the Suggestions List
+
+When status is `"OK"`, the `data` array contains place suggestions. Each suggestion includes:
+
+- `description`: The readable address or place name.
+- `place_id`: Unique Google Places identifier.
+
+We will render these as a list below the input.
 
 ```tsx
-import './globals.css';
+<ul role="listbox" id={`${id}-listbox`} className="suggestions-list">
+  {status === "OK" &&
+    data.map(({ place_id, description }) => (
+      <li
+        key={place_id}
+        role="option"
+        id={`${id}-option-${place_id}`}
+        tabIndex={-1}
+        onClick={() => handleSelect({ place_id, description })}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            handleSelect({ place_id, description });
+          }
+        }}
+        className="suggestion-item"
+      >
+        {description}
+      </li>
+    ))}
+</ul>
 ```
 
-### Why here?
+### 4.4.2 Styling Suggestions
 
-- CSS imported here applies globally, affecting all nested layouts and pages.
-- You cannot import global CSS inside components or pages anymore.
-
-### Example: globals.css
-
-```css
-/* globals.css */
-html, body {
-  margin: 0;
-  padding: 0;
-  font-family: var(--font-inter), sans-serif;
-  background-color: #f7f8fa;
-  color: #333;
-}
-
-a {
-  color: #317efb;
-  text-decoration: none;
-}
-
-a:hover {
-  text-decoration: underline;
-}
-```
-
-### Font Setup
-
-Using Next.js’s built-in Google Fonts integration (via `next/font/google`) helps:
-
-- Optimize font loading.
-- Avoid layout shifts.
-- Use CSS variables to apply fonts globally.
-
-See the font import example in the `RootLayout` above.
+You can style the suggestions list and items using CSS or Tailwind (depending on your stack) to highlight hovered/focused items and provide clear visual feedback.
 
 ---
 
-## 3.5 Accessibility Considerations
+## 4.5 Handling Keyboard Navigation and Accessibility
 
-Accessibility (a11y) is essential for building inclusive web apps. When designing your `RootLayout`, consider:
+Accessibility is critical for autocomplete components.
 
-- **Language attribute**: Set `lang="en"` on the `<html>` tag to help screen readers.
-- **Skip links**: Provide a "skip to content" link for keyboard users.
-- **Focus management**: Ensure focus styles are visible and logical.
-- **Contrast and font sizes**: Use accessible color contrasts and readable fonts.
+### 4.5.1 ARIA Roles and Attributes
 
-Example of a skip link in the layout:
+- The input should have `aria-autocomplete="list"` and `aria-controls` referencing the listbox.
+- The suggestion list should have `role="listbox"`.
+- Each suggestion should have `role="option"` and a unique `id`.
+- The input should have `aria-activedescendant` set to the currently highlighted suggestion's id.
 
-```tsx
-<body>
-  <a href="#main-content" className="skip-link">Skip to main content</a>
-  {children}
-</body>
-```
+### 4.5.2 Managing Focus and Keyboard
 
-And CSS for `.skip-link`:
+Implement keyboard navigation:
 
-```css
-.skip-link {
-  position: absolute;
-  top: -40px;
-  left: 0;
-  background: #000;
-  color: #fff;
-  padding: 8px;
-  z-index: 100;
-}
+- **Arrow Down / Up:** Moves focus through suggestions.
+- **Enter / Space:** Selects the focused suggestion.
+- **Escape:** Closes the suggestions.
 
-.skip-link:focus {
-  top: 0;
-}
-```
-
----
-
-## 3.6 Implementing Global Theming
-
-In an app integrating Google Maps and autocomplete, consistent theming is crucial.
-
-### Using CSS Variables
-
-Define color palettes and spacing in `globals.css`:
-
-```css
-:root {
-  --color-primary: #317efb;
-  --color-secondary: #f5f7fa;
-  --color-text: #333333;
-  --spacing-unit: 8px;
-}
-```
-
-Use them throughout your app:
-
-```css
-body {
-  background-color: var(--color-secondary);
-  color: var(--color-text);
-  font-family: var(--font-inter), sans-serif;
-}
-```
-
-### Using React Context (Optional)
-
-For dynamic theming (e.g., light/dark mode), you can create a React Context provider at the root layout level and pass theme state down.
+You can manage a `highlightedIndex` state to track which suggestion is focused.
 
 Example snippet:
 
 ```tsx
-'use client';
+const [highlightedIndex, setHighlightedIndex] = React.useState(-1);
 
-import { createContext, useState } from 'react';
-
-export const ThemeContext = createContext({ theme: 'light', toggleTheme: () => {} });
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState('light');
-
-  function toggleTheme() {
-    setTheme(theme === 'light' ? 'dark' : 'light');
+const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  switch (e.key) {
+    case "ArrowDown":
+      e.preventDefault();
+      setHighlightedIndex((prev) =>
+        prev < data.length - 1 ? prev + 1 : 0
+      );
+      break;
+    case "ArrowUp":
+      e.preventDefault();
+      setHighlightedIndex((prev) =>
+        prev > 0 ? prev - 1 : data.length - 1
+      );
+      break;
+    case "Enter":
+      e.preventDefault();
+      if (highlightedIndex >= 0) {
+        handleSelect(data[highlightedIndex]);
+      }
+      break;
+    case "Escape":
+      clearSuggestions();
+      break;
   }
-
-  return (
-    <html lang="en" data-theme={theme}>
-      <body>
-        <ThemeContext.Provider value={{ theme, toggleTheme }}>
-          {children}
-        </ThemeContext.Provider>
-      </body>
-    </html>
-  );
-}
+};
 ```
 
-And CSS can use `[data-theme="dark"]` selectors to apply dark mode styles.
-
----
-
-## 3.7 Conclusion
-
-In this chapter, we built the `RootLayout` component, the foundation of our Next.js 13 app. We learned about:
-
-- The new layout system and React Server Components
-- How to manage SEO and PWA metadata declaratively
-- Importing global CSS and fonts the Next.js 13 way
-- Accessibility best practices to make the app usable by all
-- Approaches to global theming for consistent styling
-
-With a solid root layout in place, you are now ready to build nested layouts and pages that inherit this shared structure and styling, keeping your app maintainable, performant, and user-friendly.
-
----
-
-**Next up:** Chapter 4 will dive into creating the main search page, integrating Google Maps and Places Autocomplete components with interactive UI and state management.
-
----
-
-# Chapter 4: **Implementing Places Autocomplete Input Component**  
-
-# Chapter 4: Implementing Places Autocomplete Input Component
-
-In this chapter, we will build a reusable `PlacesAutocomplete` input component that integrates the Google Places Autocomplete functionality using the `use-places-autocomplete` custom hook. This component will manage the input state, display location suggestions dynamically, and follow accessibility best practices. We will also design the component to communicate with parent components through callback props, enabling flexible and scalable usage across the application.
-
----
-
-## Table of Contents
-
-- [Introduction](#introduction)  
-- [Setting Up `use-places-autocomplete`](#setting-up-use-places-autocomplete)  
-- [Managing Controlled Input State](#managing-controlled-input-state)  
-- [Rendering Suggestions and Handling Selection](#rendering-suggestions-and-handling-selection)  
-- [Accessibility Considerations with `useId`](#accessibility-considerations-with-useid)  
-- [Callback Props for Parent Communication](#callback-props-for-parent-communication)  
-- [Putting It All Together: Complete Component Example](#putting-it-all-together-complete-component-example)  
-- [Conclusion](#conclusion)  
-
----
-
-## Introduction
-
-Autocomplete inputs for places are a common UX pattern in modern web applications, especially those dealing with maps, delivery, or travel features. While Google Maps Places API provides rich autocomplete functionality, integrating it efficiently and accessibly in React requires careful state management and architectural decisions.
-
-The `PlacesAutocomplete` component we build here will:
-
-- Use the `use-places-autocomplete` hook to manage API logic and suggestions  
-- Manage the input as a controlled component for predictable behavior  
-- Display dynamic suggestions with keyboard and screen reader accessibility  
-- Allow parent components to respond to user selections via callbacks  
-
-Let’s dive in!
-
----
-
-## Setting Up `use-places-autocomplete`
-
-`use-places-autocomplete` is a handy hook that abstracts away the complexity of interacting with the Google Places Autocomplete API. It manages fetching suggestions based on input value and exposes helpful functions and data.
-
-To start, install the package (if not already done):
-
-```bash
-npm install use-places-autocomplete
-# or
-yarn add use-places-autocomplete
-```
-
-Inside the component, we initialize it like this:
-
-```tsx
-import usePlacesAutocomplete, { getGeocode, getLatLng } from "use-places-autocomplete";
-
-const {
-  ready,          // boolean: is the Google API ready
-  value,          // string: current input value
-  suggestions,    // { status, data } object for autocomplete suggestions
-  setValue,       // function to update input value
-  clearSuggestions // function to clear suggestions list
-} = usePlacesAutocomplete({
-  debounce: 300,  // debounce delay for API calls
-});
-```
-
-- `ready` indicates if the Google Places API is loaded and ready to use.  
-- `value` and `setValue` are used to control the input text.  
-- `suggestions` contains the status and array of suggested place predictions.  
-- `clearSuggestions` clears the suggestion list (usually called once a selection is made).
-
-This hook simplifies most of the heavy lifting involved in managing autocomplete requests and results.
-
----
-
-## Managing Controlled Input State
-
-React recommends controlled components for form inputs to keep UI state predictable.
-
-In our `PlacesAutocomplete` component, the text input’s value is tied to the hook’s `value` state:
+Apply `aria-activedescendant` on the input:
 
 ```tsx
 <input
   type="text"
   value={value}
-  onChange={(e) => {
-    setValue(e.target.value);
-  }}
-  disabled={!ready}
-  placeholder="Search a location"
-/>
-```
-
-- When the user types, `onChange` updates the hook’s internal value via `setValue`.  
-- The `disabled` prop disables the input until the Google Places API is ready.  
-- The input’s `value` is controlled by the hook, ensuring sync between UI and hook state.
-
-This controlled pattern is essential for predictability, especially when suggestions depend on the input.
-
----
-
-## Rendering Suggestions and Handling Selection
-
-The `suggestions` object from the hook has the following shape:
-
-```ts
-{
-  status: "OK" | "ZERO_RESULTS" | ...,
-  data: Array<Prediction>
-}
-```
-
-Each `Prediction` object contains detailed information about a suggested place.
-
-We typically want to display a dropdown list of suggestions as the user types:
-
-```tsx
-{suggestions.status === "OK" && (
-  <ul>
-    {suggestions.data.map(({ place_id, description }) => (
-      <li key={place_id} onClick={() => handleSelect(description)}>
-        {description}
-      </li>
-    ))}
-  </ul>
-)}
-```
-
-The `handleSelect` function is triggered when the user clicks a suggestion. It should:
-
-1. Update the input value to the selected suggestion  
-2. Clear suggestions  
-3. Optionally, retrieve detailed info (e.g., lat/lng) using `getGeocode` and `getLatLng` helpers from `use-places-autocomplete`  
-
-Example:
-
-```tsx
-const handleSelect = async (address: string) => {
-  setValue(address, false); // update input but do not fetch suggestions
-  clearSuggestions();
-
-  try {
-    const results = await getGeocode({ address });
-    const { lat, lng } = await getLatLng(results[0]);
-    // Pass lat/lng and address to parent or state
-    onSelect({ address, lat, lng });
-  } catch (error) {
-    console.error("Error getting geocode:", error);
-  }
-};
-```
-
-This approach encapsulates the logic for fetching place details and communicating the final selection to the parent component.
-
----
-
-## Accessibility Considerations with `useId`
-
-Accessible autocomplete inputs improve the experience for keyboard and screen reader users.
-
-React’s `useId` hook (React 18+) helps generate unique IDs to link the input and the list of suggestions:
-
-```tsx
-import { useId } from "react";
-
-const inputId = useId();
-const listboxId = `${inputId}-listbox`;
-```
-
-In the input element:
-
-```tsx
-<input
-  id={inputId}
+  onChange={handleInput}
+  onKeyDown={handleKeyDown}
   aria-autocomplete="list"
-  aria-controls={listboxId}
-  aria-expanded={suggestions.status === "OK"}
-  aria-activedescendant={activeId} // dynamically set when navigating suggestions
-  ...
+  aria-controls={`${id}-listbox`}
+  aria-activedescendant={
+    highlightedIndex >= 0
+      ? `${id}-option-${data[highlightedIndex].place_id}`
+      : undefined
+  }
+  placeholder={placeholder}
+  disabled={!ready}
 />
 ```
 
-In the suggestions list:
-
-```tsx
-<ul id={listboxId} role="listbox">
-  {suggestions.data.map(({ place_id, description }, index) => {
-    const optionId = `${listboxId}-option-${index}`;
-    return (
-      <li
-        key={place_id}
-        id={optionId}
-        role="option"
-        aria-selected={activeIndex === index}
-        onClick={() => handleSelect(description)}
-      >
-        {description}
-      </li>
-    );
-  })}
-</ul>
-```
-
-This markup:
-
-- Connects the input and suggestion list via ARIA attributes  
-- Ensures screen readers announce the suggestions properly  
-- Supports keyboard navigation when implemented (e.g., arrow keys)
-
-While keyboard navigation is beyond the scope of this chapter, adding `aria-activedescendant` prepares the component for it.
-
 ---
 
-## Callback Props for Parent Communication
+## 4.6 Full Component Example
 
-To keep the component reusable and decoupled, we expose callback props to notify the parent about meaningful events, such as:
-
-- `onSelect`: when the user picks a place (address + lat/lng)  
-- `onChange`: when the input value changes (optional, for controlled usage)  
-- `onClear`: when suggestions are cleared (optional)
-
-Example prop definitions in TypeScript:
-
-```ts
-interface PlacesAutocompleteProps {
-  onSelect: (selection: { address: string; lat: number; lng: number }) => void;
-  onChange?: (value: string) => void;
-  placeholder?: string;
-}
-```
-
-Usage inside the component:
+Putting it all together:
 
 ```tsx
-const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-  setValue(e.target.value);
-  if (onChange) onChange(e.target.value);
-};
-```
-
-This pattern allows parent components to respond to user input or selection and integrate the autocomplete into different workflows (e.g., forms, map centers, etc.).
-
----
-
-## Putting It All Together: Complete Component Example
-
-Here is a complete example of the `PlacesAutocomplete` component implementing the concepts discussed:
-
-```tsx
-"use client";
-
-import React, { useState } from "react";
-import usePlacesAutocomplete, { getGeocode, getLatLng } from "use-places-autocomplete";
-import { useId } from "react";
+import React, { useState, useId } from "react";
+import usePlacesAutocomplete, { Suggestion } from "use-places-autocomplete";
 
 interface PlacesAutocompleteProps {
-  onSelect: (selection: { address: string; lat: number; lng: number }) => void;
-  onChange?: (value: string) => void;
+  onSelect: (address: string, placeId?: string) => void;
   placeholder?: string;
+  defaultValue?: string;
 }
 
 export const PlacesAutocomplete: React.FC<PlacesAutocompleteProps> = ({
   onSelect,
-  onChange,
-  placeholder = "Search a location",
+  placeholder = "Search places...",
+  defaultValue = "",
 }) => {
+  const id = useId();
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+
   const {
     ready,
     value,
@@ -902,90 +954,83 @@ export const PlacesAutocomplete: React.FC<PlacesAutocompleteProps> = ({
     clearSuggestions,
   } = usePlacesAutocomplete({
     debounce: 300,
+    defaultValue,
   });
 
-  const inputId = useId();
-  const listboxId = `${inputId}-listbox`;
-
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     setValue(e.target.value);
-    if (onChange) {
-      onChange(e.target.value);
-    }
   };
 
-  const handleSelect = async (address: string) => {
-    setValue(address, false);
+  const handleSelect = (suggestion: Suggestion) => {
+    setValue(suggestion.description, false);
     clearSuggestions();
+    setHighlightedIndex(-1);
+    onSelect(suggestion.description, suggestion.place_id);
+  };
 
-    try {
-      const results = await getGeocode({ address });
-      const { lat, lng } = await getLatLng(results[0]);
-      onSelect({ address, lat, lng });
-    } catch (error) {
-      console.error("Error fetching geocode:", error);
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (status !== "OK") return;
+
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        setHighlightedIndex((prev) => (prev < data.length - 1 ? prev + 1 : 0));
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : data.length - 1));
+        break;
+      case "Enter":
+        e.preventDefault();
+        if (highlightedIndex >= 0) {
+          handleSelect(data[highlightedIndex]);
+        }
+        break;
+      case "Escape":
+        clearSuggestions();
+        setHighlightedIndex(-1);
+        break;
     }
   };
 
   return (
-    <div style={{ position: "relative" }}>
+    <div className="places-autocomplete">
       <input
-        id={inputId}
         type="text"
-        value={value}
-        onChange={handleInputChange}
-        disabled={!ready}
         placeholder={placeholder}
+        value={value}
+        onChange={handleInput}
+        onKeyDown={handleKeyDown}
         aria-autocomplete="list"
-        aria-controls={listboxId}
-        aria-expanded={status === "OK"}
+        aria-controls={`${id}-listbox`}
         aria-activedescendant={
-          activeIndex !== null ? `${listboxId}-option-${activeIndex}` : undefined
+          highlightedIndex >= 0 ? `${id}-option-${data[highlightedIndex].place_id}` : undefined
         }
+        disabled={!ready}
+        role="combobox"
+        aria-expanded={status === "OK"}
+        aria-haspopup="listbox"
+        aria-owns={`${id}-listbox`}
         autoComplete="off"
-        style={{ width: "100%" }}
+        spellCheck={false}
       />
 
-      {status === "OK" && data.length > 0 && (
-        <ul
-          id={listboxId}
-          role="listbox"
-          style={{
-            position: "absolute",
-            zIndex: 1000,
-            background: "white",
-            margin: 0,
-            padding: 0,
-            listStyle: "none",
-            width: "100%",
-            maxHeight: "200px",
-            overflowY: "auto",
-            border: "1px solid #ccc",
-          }}
-        >
-          {data.map(({ place_id, description }, index) => {
-            const optionId = `${listboxId}-option-${index}`;
-            return (
-              <li
-                key={place_id}
-                id={optionId}
-                role="option"
-                aria-selected={activeIndex === index}
-                onClick={() => handleSelect(description)}
-                onMouseEnter={() => setActiveIndex(index)}
-                onMouseLeave={() => setActiveIndex(null)}
-                style={{
-                  padding: "0.5rem",
-                  cursor: "pointer",
-                  backgroundColor: activeIndex === index ? "#bde4ff" : "transparent",
-                }}
-              >
-                {description}
-              </li>
-            );
-          })}
+      {status === "OK" && (
+        <ul role="listbox" id={`${id}-listbox`} className="suggestions-list">
+          {data.map(({ place_id, description }, index) => (
+            <li
+              key={place_id}
+              id={`${id}-option-${place_id}`}
+              role="option"
+              tabIndex={-1}
+              className={`suggestion-item ${highlightedIndex === index ? "highlighted" : ""}`}
+              onClick={() => handleSelect({ place_id, description })}
+              onMouseEnter={() => setHighlightedIndex(index)}
+              onMouseLeave={() => setHighlightedIndex(-1)}
+            >
+              {description}
+            </li>
+          ))}
         </ul>
       )}
     </div>
@@ -995,208 +1040,76 @@ export const PlacesAutocomplete: React.FC<PlacesAutocompleteProps> = ({
 
 ---
 
-## Conclusion
+## 4.7 Accessibility Summary
 
-In this chapter, we created a robust and reusable `PlacesAutocomplete` React component using the `use-places-autocomplete` hook. We covered:
-
-- How to integrate with Google Places API via the hook  
-- Managing controlled input state for predictability  
-- Rendering and selecting autocomplete suggestions  
-- Implementing accessibility best practices using `useId` and ARIA attributes  
-- Designing the component with callback props for flexible parent communication  
-
-This component forms a critical UI piece in Next.js apps that require location inputs and can be further enhanced with keyboard navigation, custom styling, and error handling. With this foundation, you can confidently integrate powerful location search functionality into your projects.
+- The input uses `role="combobox"` with appropriate ARIA attributes.
+- The listbox and options use `role="listbox"` and `role="option"`.
+- Keyboard navigation is supported for arrow keys, enter, and escape.
+- Visual focus and hover states are synchronized with keyboard navigation.
 
 ---
 
-**Next up:** In the following chapters, we will explore integrating this autocomplete component with map displays and handling user-selected locations across the app state.
+## 4.8 Conclusion
+
+In this chapter, we successfully created the `PlacesAutocomplete` component. By integrating the `use-places-autocomplete` hook, we abstracted Google Places API complexities and focused on building a user-friendly autocomplete experience.
+
+We managed input state, dynamically rendered suggestions, handled selection events with callback props, and ensured accessibility through ARIA roles and keyboard navigation.
+
+This component provides a solid foundation for location input in your Next.js + Google Maps API application, promoting reusability and a polished UX.
+
+In the next chapter, we will explore how to integrate this component within a larger form and process selected place data to display on the map.
 
 ---
 
-# Chapter 5: **Integrating Google Maps with Dynamic Location Rendering**  
+# Chapter 5: **State Management and Parent-Child Communication in React**  
 
-# Chapter 5: Integrating Google Maps with Dynamic Location Rendering
+# Chapter 5: State Management and Parent-Child Communication in React
 
-## Introduction
+In this chapter, we will explore how **state management** and **parent-child communication** work together in the `page.tsx` file of our Next.js + Google Maps API project. Specifically, we will focus on how the location state (`lat` / `lng`) is managed and updated based on user interactions, and how child components notify the parent of changes through callback props.
 
-In this chapter, we will explore how to integrate Google Maps into your Next.js application using the `@react-google-maps/api` package. We will focus on the `Home` component (`app/page.tsx`) as a **client component** responsible for managing the map's state, dynamically updating its center based on user input. You will learn how to embed the `GoogleMap` and `MarkerF` components, how to geocode addresses into latitude and longitude coordinates using `getGeocode` and `getLatLng` utilities, and how to reflect these changes dynamically on the map.
-
-By the end of this chapter, you will understand the fundamentals behind declarative Google Maps rendering within a React environment, the significance of client components in Next.js 13+, and how to manage state effectively with hooks like `useState`.
+Understanding these React concepts is essential for building interactive UIs that respond dynamically to user input, such as updating a map when a new place is selected.
 
 ---
 
-## 5.1 Setting Up the `Home` Component as a Client Component
+## 5.1 Introduction to State Management in React
 
-Next.js 13 introduced React Server Components by default. However, to manage interactive state or browser-only APIs (like Google Maps), we need to designate components as **client components**. This is done by adding `"use client";` at the top of the file.
+React components can maintain their own internal state using the `useState` hook. This state controls what the component renders and can change over time in response to user actions or other events.
 
-```tsx
-// app/page.tsx
-"use client";
+In our `page.tsx` file, we keep track of the selected location’s coordinates (`lat` and `lng`) in state. This allows us to:
 
-import React, { useState } from "react";
-import { GoogleMap, MarkerF, useLoadScript } from "@react-google-maps/api";
-
-// Additional imports will be covered later
-```
-
-### Why `"use client";`?
-
-- Enables React hooks like `useState` and `useEffect` that require client-side rendering.
-- Allows interaction with browser APIs (e.g., Google Maps JavaScript API).
-- Essential for components needing dynamic updates and user interaction.
+- Render the map centered on the current location.
+- Update the map view whenever the user selects a new location.
 
 ---
 
-## 5.2 Managing Map State with `useState`
+## 5.2 The `page.tsx` Component: Managing Location State
 
-The core of dynamic location rendering lies in maintaining the map's center coordinates in state so that when a user searches or selects a new location, the map re-centers automatically.
-
-We typically start with a default location, for example, New York City coordinates:
+Let's look at the core of how `page.tsx` manages the location state:
 
 ```tsx
-const DEFAULT_CENTER = { lat: 40.7128, lng: -74.006 };
-```
+import { useState } from "react";
+import PlacesAutocomplete from "./PlacesAutocomplete";
+import Map from "./Map";
 
-Inside the `Home` component, declare state for the map center:
-
-```tsx
-const [center, setCenter] = useState<{ lat: number; lng: number }>(DEFAULT_CENTER);
-```
-
-This `center` state will be passed to the `GoogleMap` component to control its viewport.
-
----
-
-## 5.3 Embedding Google Map and Marker Components
-
-The `@react-google-maps/api` package provides declarative React components to work with Google Maps. Two key components are:
-
-- **`GoogleMap`**: The map container.
-- **`MarkerF`**: A marker on the map (the `F` variant supports React 18's concurrent features).
-
-### Loading the Google Maps Script
-
-Before rendering the map, you must load the Google Maps API script using the `useLoadScript` hook:
-
-```tsx
-const { isLoaded, loadError } = useLoadScript({
-  googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "",
-  libraries: ["places"], // if you use Places Autocomplete or Geocoding services
-});
-```
-
-### Rendering the Map and Marker
-
-```tsx
-if (loadError) return <div>Error loading maps</div>;
-if (!isLoaded) return <div>Loading Maps...</div>;
-
-return (
-  <GoogleMap
-    zoom={14}
-    center={center}
-    mapContainerStyle={{ width: "100%", height: "400px" }}
-  >
-    <MarkerF position={center} />
-  </GoogleMap>
-);
-```
-
-This renders a map centered at `center` with a marker positioned exactly there.
-
----
-
-## 5.4 Geocoding Addresses to Coordinates
-
-To dynamically update the map center based on user input (e.g., an address), we need to convert addresses into latitude and longitude. This process is called **geocoding**.
-
-### Using `getGeocode` and `getLatLng`
-
-The `@react-google-maps/api` package exports utility functions to help with geocoding:
-
-- **`getGeocode({ address })`**: Takes a string address and returns geocode results.
-- **`getLatLng(geocodeResult)`**: Extracts `{ lat, lng }` from a geocode result.
-
-### Example: Geocode an Address and Update the Map
-
-Here is an example function inside the `Home` component that takes an address string, geocodes it, and updates the map center state:
-
-```tsx
-import { getGeocode, getLatLng } from "use-places-autocomplete";
-
-async function handleAddressSelect(address: string) {
-  try {
-    const results = await getGeocode({ address });
-    if (results.length === 0) throw new Error("No results found");
-    const { lat, lng } = await getLatLng(results[0]);
-    setCenter({ lat, lng });
-  } catch (error) {
-    console.error("Error geocoding address:", error);
-  }
-}
-```
-
-You can call `handleAddressSelect` whenever the user selects or inputs a new address.
-
----
-
-## 5.5 Putting It All Together: Complete `Home` Component Example
-
-Below is a simplified but complete example of the `Home` component integrating all the pieces:
-
-```tsx
-"use client";
-
-import React, { useState } from "react";
-import { GoogleMap, MarkerF, useLoadScript } from "@react-google-maps/api";
-import { getGeocode, getLatLng } from "use-places-autocomplete";
-
-const DEFAULT_CENTER = { lat: 40.7128, lng: -74.006 };
-
-export default function Home() {
-  const [center, setCenter] = useState(DEFAULT_CENTER);
-  const [address, setAddress] = useState("");
-
-  const { isLoaded, loadError } = useLoadScript({
-    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "",
-    libraries: ["places"],
+export default function Page() {
+  // State to hold the current location coordinates
+  const [location, setLocation] = useState<{ lat: number; lng: number }>({
+    lat: 37.7749,
+    lng: -122.4194, // Default: San Francisco coordinates
   });
 
-  async function handleSearch() {
-    if (!address) return;
-    try {
-      const results = await getGeocode({ address });
-      if (results.length === 0) throw new Error("No results found");
-      const { lat, lng } = await getLatLng(results[0]);
-      setCenter({ lat, lng });
-    } catch (error) {
-      console.error("Failed to geocode address:", error);
-    }
-  }
-
-  if (loadError) return <div>Error loading maps</div>;
-  if (!isLoaded) return <div>Loading Maps...</div>;
+  // Callback to update location state from child component
+  const handleLocationSelect = (newLocation: { lat: number; lng: number }) => {
+    setLocation(newLocation);
+  };
 
   return (
     <div>
-      <input
-        type="text"
-        placeholder="Enter address"
-        value={address}
-        onChange={(e) => setAddress(e.target.value)}
-        style={{ width: "300px", padding: "8px" }}
-      />
-      <button onClick={handleSearch} style={{ marginLeft: "10px" }}>
-        Search
-      </button>
+      {/* Pass callback prop to child */}
+      <PlacesAutocomplete onSelect={handleLocationSelect} />
 
-      <GoogleMap
-        zoom={14}
-        center={center}
-        mapContainerStyle={{ width: "100%", height: "400px", marginTop: "20px" }}
-      >
-        <MarkerF position={center} />
-      </GoogleMap>
+      {/* Pass location state to Map for rendering */}
+      <Map center={location} />
     </div>
   );
 }
@@ -1204,729 +1117,722 @@ export default function Home() {
 
 ### Explanation
 
-- The component initializes with a default center.
-- An input field allows users to enter an address.
-- Upon clicking **Search**, `handleSearch` geocodes the address and updates the map center.
-- The map and marker re-render automatically based on the updated `center` state.
+- We declare a `location` state variable using `useState`, initializing it with default coordinates.
+- The `handleLocationSelect` function updates this state when called.
+- `PlacesAutocomplete` is a child component that allows the user to search and select places.
+- We pass `handleLocationSelect` as a prop named `onSelect` to `PlacesAutocomplete`.
+- When `PlacesAutocomplete` detects a location selection, it calls this callback with the new coordinates.
+- The state update triggers a re-render of `page.tsx`, which in turn passes the updated location to the `Map` component to update the map view.
 
 ---
 
-## 5.6 Summary and Best Practices
+## 5.3 Lifting State Up: Why Manage Location in `page.tsx`?
 
-- **Client Components:** Always declare `"use client";` when using hooks or browser APIs.
-- **State Management:** Use `useState` to track dynamic values like map center coordinates.
-- **Declarative Map Rendering:** Use `GoogleMap` and `MarkerF` components from `@react-google-maps/api` to declaratively render maps and markers.
-- **Geocoding Utilities:** Leverage `getGeocode` and `getLatLng` for converting addresses to lat/lng coordinates.
-- **Error Handling:** Always handle errors gracefully, especially for user inputs and external API calls.
+In React, **lifting state up** means moving shared state to the closest common ancestor of components that need it.
 
----
+Here:
 
-## Conclusion
+- Both `PlacesAutocomplete` (child) and `Map` (another child) depend on the selected location.
+- To synchronize them, the location state lives in their common parent: `page.tsx`.
+- `PlacesAutocomplete` only has the responsibility to notify `page.tsx` of the new location via a callback.
+- `page.tsx` holds the authoritative location state and passes it down to `Map`.
 
-Integrating Google Maps with dynamic location rendering enhances the user experience by providing interactive, real-time map updates. By managing the map state within a client component and utilizing declarative APIs, you can create responsive and intuitive map features in your Next.js application.
-
-In the next chapter, we will build upon this foundation by integrating places autocomplete functionality to improve address input and selection, creating a seamless location search experience.
+This pattern ensures a single source of truth, avoids duplication, and keeps components reusable and focused on their own concerns.
 
 ---
 
-# End of Chapter 5
+## 5.4 Callback Props: Enabling Child to Parent Communication
 
----
+React’s data flow is **unidirectional** (top-down). Parents pass data to children via props, but children cannot directly change parent state. To communicate changes back up, React uses **callback props**.
 
-# Chapter 6: **Data Flow and Component Interaction**  
+### How It Works in Our Example
 
-# Chapter 6: Data Flow and Component Interaction
+- The parent (`page.tsx`) passes a function (`handleLocationSelect`) as a prop to the child (`PlacesAutocomplete`).
+- When the user selects a location inside `PlacesAutocomplete`, it calls this function, passing the new coordinates.
+- This triggers a state update in the parent, which causes a re-render and updates all dependent components.
 
-## Introduction
-
-In this chapter, we dive deep into the data flow and interaction between components in our Next.js application that integrates Google Maps with a Places Autocomplete feature. Understanding how information travels from user input through to the map rendering is crucial for grasping the architecture and design principles behind this project.
-
-We will explore how the `PlacesAutocomplete` component communicates the selected address back to the parent `Home` component, triggering geocoding and map updates. Along the way, we will discuss the concept of unidirectional data flow in React, parent-child communication patterns, event handling, and the separation of concerns that keeps the codebase maintainable and scalable.
-
----
-
-## 1. Overview of the Data Flow
-
-At a high level, the data flow in this application follows React’s unidirectional data flow paradigm:
-
-1. **User Input:** The user types an address in the `PlacesAutocomplete` input field.
-2. **Selection Event:** When the user selects an address from the autocomplete suggestions, `PlacesAutocomplete` emits a callback with the selected address.
-3. **Parent Update:** The `Home` component receives this address via a callback prop and triggers geocoding to obtain latitude and longitude.
-4. **State Update:** `Home` updates its state with the new coordinates.
-5. **Map Rendering:** The updated state is passed down to the map component (e.g., Google Maps React component), which renders the map centered at the new location.
-
-This flow ensures data moves downward via props and events bubble upward via callbacks, maintaining a clear and predictable interaction pattern.
-
----
-
-## 2. Components Involved
-
-### `PlacesAutocomplete`
-
-- **Role:** Provides an input box with autocomplete suggestions powered by Google Places API.
-- **Output:** Selected address string.
-- **Communication:** Uses a callback prop (e.g., `onSelect`) to notify the parent when an address is selected.
-
-### `Home`
-
-- **Role:** Acts as the container and orchestrator.
-- **Responsibilities:**
-  - Holds the selected address and coordinates in its state.
-  - Handles geocoding the selected address to coordinates.
-  - Passes coordinates to the map component for rendering.
-
-### Map Component (e.g., `GoogleMap`)
-
-- **Role:** Receives coordinates as props and renders the map centered on those coordinates.
-
----
-
-## 3. Parent-Child Communication in Action
-
-### Passing Callbacks Down and Events Up
-
-In React, data flows down from parent to child via props, while children communicate events up to parents via callback functions passed as props. This pattern is clear in how `Home` and `PlacesAutocomplete` interact.
-
-#### Example: `Home` Passing Callback to `PlacesAutocomplete`
+### Example snippet from `PlacesAutocomplete`:
 
 ```tsx
-// Home.tsx (simplified)
-
-import { useState } from 'react';
-import PlacesAutocomplete from './PlacesAutocomplete';
-
-export default function Home() {
-  const [address, setAddress] = useState('');
-  const [coordinates, setCoordinates] = useState({ lat: 0, lng: 0 });
-
-  // Callback to receive selected address from PlacesAutocomplete
-  const handleSelect = async (selectedAddress: string) => {
-    setAddress(selectedAddress);
-
-    // Geocode address to get lat/lng
-    const coords = await geocodeAddress(selectedAddress);
-    setCoordinates(coords);
-  };
-
-  return (
-    <div>
-      <PlacesAutocomplete onSelect={handleSelect} />
-      <MapComponent center={coordinates} />
-    </div>
-  );
-}
-```
-
-Here, `Home` passes down the `handleSelect` function as the `onSelect` prop to `PlacesAutocomplete`. When the user selects a place, `PlacesAutocomplete` calls this function with the selected address.
-
-### `PlacesAutocomplete` Calling the Callback
-
-```tsx
-// PlacesAutocomplete.tsx (simplified)
-
-type Props = {
-  onSelect: (address: string) => void;
+type PlacesAutocompleteProps = {
+  onSelect: (location: { lat: number; lng: number }) => void;
 };
 
-export default function PlacesAutocomplete({ onSelect }: Props) {
-  const [inputValue, setInputValue] = useState('');
+function PlacesAutocomplete({ onSelect }: PlacesAutocompleteProps) {
+  // ... some autocomplete logic, e.g., Google Places API
 
-  const handlePlaceSelect = (address: string) => {
-    setInputValue(address);
-    onSelect(address);  // Notify parent
-  };
+  function handlePlaceSelect(place: any) {
+    // Extract coordinates from the selected place
+    const lat = place.geometry.location.lat();
+    const lng = place.geometry.location.lng();
 
+    // Notify parent of new location
+    onSelect({ lat, lng });
+  }
+
+  // Render autocomplete UI and bind handlePlaceSelect to selection event
   return (
-    <input
-      type="text"
-      value={inputValue}
-      onChange={e => setInputValue(e.target.value)}
-      // Autocomplete logic omitted for brevity
-      onBlur={() => handlePlaceSelect(inputValue)}
-    />
+    <input type="text" /* autocomplete search UI */ />
+    // ...
   );
 }
 ```
 
-`PlacesAutocomplete` manages its own input state but notifies the parent when an address is selected via the `onSelect` callback.
+---
+
+## 5.5 Reactivity and Component Re-rendering
+
+When the state in `page.tsx` changes via `setLocation`, React triggers a re-render of `page.tsx` and all its children that depend on the changed state.
+
+- The `Map` component receives the updated `center` prop with new coordinates.
+- `Map` updates its display accordingly, showing the map centered on the new location.
+- This reactive update flow happens seamlessly due to React’s virtual DOM diffing and efficient rendering.
 
 ---
 
-## 4. Geocoding and Map Updates
+## 5.6 Summary of Key Concepts
 
-Once the `Home` component receives the selected address, it needs to translate it into geographical coordinates to update the map.
+| Concept                | Description                                                                                   | Example in This Project                      |
+|------------------------|-----------------------------------------------------------------------------------------------|---------------------------------------------|
+| `useState`             | React hook to hold component state and update it over time.                                   | `const [location, setLocation] = useState(...)` |
+| Lifting State Up       | Moving shared state to the closest common ancestor to synchronize multiple children.           | `location` state lives in `page.tsx`         |
+| Callback Props         | Passing functions from parent to child to enable children to notify parents of changes.       | `onSelect={handleLocationSelect}` passed to `PlacesAutocomplete` |
+| Reactivity & Re-render | State updates cause React to re-render affected components with new data.                      | `Map` updates when `location` changes       |
 
-### Geocoding Function
+---
 
-A typical approach is to use the Google Maps Geocoding API:
+## 5.7 Conclusion
+
+In this chapter, we learned how `page.tsx` effectively manages the location state (`lat/lng`) using React’s `useState` hook. By lifting the location state up to the parent component, it synchronizes the user selection in `PlacesAutocomplete` with the map rendering in `Map`.
+
+The callback prop pattern enables child components to notify parents of user actions, maintaining React’s unidirectional data flow while allowing for dynamic, responsive UI updates.
+
+Mastering these state management and communication patterns is essential for building scalable React applications that integrate complex interactive features like maps and location search.
+
+---
+
+In the next chapter, we will dive deeper into enhancing the user experience by adding loading states and error handling around the location search and map rendering processes.
+
+---
+
+# Chapter 6: **Putting It All Together: Composing the Main Page UI**  
+
+# Chapter 6: Putting It All Together: Composing the Main Page UI
+
+In this chapter, we'll bring together the key pieces we've developed so far — the `PlacesAutocomplete` input component and the Google Map — into a cohesive main page UI inside `page.tsx`. You'll see how state, callbacks, and external components interact smoothly to provide a responsive and intuitive map search experience.
+
+By the end, you’ll understand how to compose components, manage state and props effectively, and render UI dynamically based on user input and asynchronous data.
+
+---
+
+## 6.1 Introduction
+
+Our goal is to create a seamless user experience where:
+
+- Users can type a location in the autocomplete input.
+- Suggestions appear dynamically as they type.
+- Upon selecting a place, the map updates to center on that location.
+
+This requires coordinating state changes, handling callbacks between components, and conditionally rendering UI elements. Let’s explore how this is achieved in the main page component.
+
+---
+
+## 6.2 Overview of `page.tsx`
+
+The `page.tsx` file acts as the container and orchestrator of the UI. It imports and composes:
+
+- **`PlacesAutocomplete`** — a controlled input component that fetches place suggestions.
+- **Google Map component** — rendering the map centered on the selected location.
+
+The component will:
+
+- Maintain state for the selected location (coordinates and address).
+- Pass down callbacks to update this state based on user interaction.
+- Render the map with props derived from the current state.
+
+---
+
+## 6.3 Component Composition and State Management
+
+### State Setup
+
+Inside `page.tsx`, we define React state hooks to track:
+
+- `selectedLocation`: an object holding latitude, longitude, and display name.
+- Optionally, a loading or error state for better UX.
+
+```tsx
+import React, { useState } from 'react';
+import PlacesAutocomplete from '../components/PlacesAutocomplete';
+import Map from '../components/Map';
+
+interface Location {
+  lat: number;
+  lng: number;
+  address: string;
+}
+
+export default function HomePage() {
+  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
+
+  // ...
+}
+```
+
+### Why use state here?
+
+Because the main page needs to:
+
+- React to user input from `PlacesAutocomplete`.
+- Pass updated location data to the `Map` component.
+- Trigger re-renders when the location changes.
+
+### Passing Callbacks to Child Components
+
+The `PlacesAutocomplete` component expects a callback prop (e.g., `onSelect`) to notify the parent when a user selects a suggestion.
+
+```tsx
+// Handler invoked when a place is selected
+const handleSelect = (location: Location) => {
+  setSelectedLocation(location);
+};
+```
+
+This method updates the `selectedLocation` state, which in turn updates the map center.
+
+---
+
+## 6.4 Controlled Components and Prop Drilling
+
+The autocomplete input is a **controlled component**, meaning its value is managed by React state. This ensures the UI stays in sync with the application state.
+
+```tsx
+<PlacesAutocomplete onSelect={handleSelect} />
+```
+
+`PlacesAutocomplete` internally manages its input value and suggestions, but informs the parent about user selections via `onSelect`.
+
+Similarly, the `Map` component receives the current location as props:
+
+```tsx
+<Map center={selectedLocation ? { lat: selectedLocation.lat, lng: selectedLocation.lng } : defaultCenter} />
+```
+
+This pattern — passing data down and events up — is fundamental in React for predictable UI behavior.
+
+---
+
+## 6.5 Conditional Rendering Based on State
+
+Initially, when no location is selected, the map can default to a general view (e.g., a world map or a city center).
+
+```tsx
+const defaultCenter = { lat: 40.7128, lng: -74.0060 }; // New York City
+```
+
+Within the render:
+
+```tsx
+<Map center={selectedLocation ? { lat: selectedLocation.lat, lng: selectedLocation.lng } : defaultCenter} />
+```
+
+This conditional logic ensures the user always sees a meaningful map.
+
+---
+
+## 6.6 Complete `page.tsx` Example
+
+Here’s the full example putting it all together:
+
+```tsx
+'use client';
+
+import React, { useState } from 'react';
+import PlacesAutocomplete from '../components/PlacesAutocomplete';
+import Map from '../components/Map';
+
+interface Location {
+  lat: number;
+  lng: number;
+  address: string;
+}
+
+export default function HomePage() {
+  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
+
+  const defaultCenter = { lat: 40.7128, lng: -74.0060 }; // Default to NYC
+
+  const handleSelect = (location: Location) => {
+    setSelectedLocation(location);
+  };
+
+  return (
+    <main className="flex flex-col items-center p-4 space-y-6">
+      <h1 className="text-2xl font-bold">Search for a Place</h1>
+
+      {/* PlacesAutocomplete input */}
+      <PlacesAutocomplete onSelect={handleSelect} />
+
+      {/* Map component centered on selectedLocation or default */}
+      <div className="w-full h-[400px]">
+        <Map center={selectedLocation ? { lat: selectedLocation.lat, lng: selectedLocation.lng } : defaultCenter} />
+      </div>
+    </main>
+  );
+}
+```
+
+---
+
+## 6.7 How This Works Together
+
+- The user types into `PlacesAutocomplete`.
+- Suggestions update dynamically inside that component.
+- When a suggestion is clicked:
+  - `PlacesAutocomplete` calls `onSelect` with the location details.
+  - `HomePage` updates `selectedLocation` state.
+- React re-renders `HomePage`, passing new coordinates to `Map`.
+- `Map` recenters on the new location.
+
+This tight coupling via state and props ensures a smooth and reactive UI.
+
+---
+
+## 6.8 Summary
+
+In this chapter, we:
+
+- Composed the main page UI by integrating `PlacesAutocomplete` and `Map`.
+- Managed shared state in the parent component to coordinate data flow.
+- Passed callbacks and props for controlled, responsive components.
+- Used conditional rendering to handle initial and updated map views.
+
+This pattern of component composition and state management forms the backbone of interactive React applications — a skill you can now confidently apply to extend or customize your map search experience.
+
+---
+
+In the next chapter, we’ll explore enhancing the user experience with loading states, error handling, and UI polish to make the app production-ready.
+
+---
+
+# Chapter 7: **Configuration and Extensibility: Tailwind, PostCSS, and Next.js**  
+
+# Chapter 7: Configuration and Extensibility: Tailwind, PostCSS, and Next.js
+
+In modern frontend development, especially with frameworks like Next.js, much of the power and flexibility comes from how you configure your toolchain. This chapter dives into the core declarative configuration files of our project—`tailwind.config.ts`, `postcss.config.js`, and `next.config.js`. Understanding these files unlocks the potential to customize styling, optimize the build process, and extend the application to suit future needs.
+
+---
+
+## 7.1 Introduction to Declarative Configurations
+
+Declarative configuration files are a cornerstone of modern JavaScript tooling. Unlike imperative scripts, these files describe *what* the system should do, not *how* to do it. This approach provides clarity, maintainability, and extensibility.
+
+In our Next.js + Google Maps API project, three key config files orchestrate the styling and build pipeline:
+
+- **`tailwind.config.ts`** — Defines the design system, theming, and customizations for Tailwind CSS.
+- **`postcss.config.js`** — Configures PostCSS plugins that transform CSS, including integrating Tailwind.
+- **`next.config.js`** — Controls Next.js-specific build optimizations and runtime behavior.
+
+Each file plays a distinct role but together they form an extensible styling and build infrastructure.
+
+---
+
+## 7.2 Tailwind Configuration: `tailwind.config.ts`
+
+Tailwind CSS is a utility-first CSS framework that requires a configuration file to tailor its behavior to your project’s needs.
+
+### Purpose and Role
+
+- **Define your design tokens:** colors, fonts, spacing, breakpoints, shadows, etc.
+- **Extend or override Tailwind’s default utility classes.**
+- **Enable features such as dark mode, container padding, or custom plugins.**
+- **Control purge settings:** Which files Tailwind scans to remove unused styles in production.
+
+### Example Configuration Snippet
 
 ```ts
-async function geocodeAddress(address: string): Promise<{ lat: number; lng: number }> {
-  const geocoder = new window.google.maps.Geocoder();
-  return new Promise((resolve, reject) => {
-    geocoder.geocode({ address }, (results, status) => {
-      if (status === 'OK' && results?.[0]) {
-        const location = results[0].geometry.location;
-        resolve({ lat: location.lat(), lng: location.lng() });
-      } else {
-        reject(new Error('Geocoding failed'));
-      }
-    });
-  });
-}
-```
+import type { Config } from 'tailwindcss'
 
-### Updating State and Re-rendering Map
-
-After geocoding, `Home` updates its state with the new coordinates, which causes React to re-render the map component centered on the updated location.
-
-```tsx
-<MapComponent center={coordinates} />
-```
-
----
-
-## 5. Separation of Concerns
-
-The design follows the principle of **separation of concerns**:
-
-- `PlacesAutocomplete` focuses strictly on user input and address selection.
-- `Home` is responsible for managing state, performing geocoding, and orchestrating the overall flow.
-- The map component is only concerned with rendering the map given coordinates.
-
-This separation ensures components remain reusable and easier to maintain.
-
----
-
-## 6. Unidirectional Data Flow Benefits
-
-- **Predictability:** Data always flows downward, making the app’s state easier to track.
-- **Debuggability:** Since state changes happen in one place (`Home`), debugging is straightforward.
-- **Scalability:** New features or components can be added without breaking existing data flow patterns.
-
----
-
-## Conclusion
-
-Understanding the data flow and component interaction is essential for working effectively with this Next.js Google Maps integration. The clear unidirectional data flow — user input in `PlacesAutocomplete` → callback to `Home` → geocoding → state update → map rendering — demonstrates React’s best practices for parent-child communication and separation of concerns.
-
-By adhering to these patterns, the codebase remains clean, modular, and scalable, making it easier for developers to extend functionality or debug issues as the project grows.
-
----
-
-# Summary
-
-| Concept                    | Description                                                         |
-|----------------------------|---------------------------------------------------------------------|
-| Unidirectional Data Flow   | Data flows downward via props; events bubble upward via callbacks.  |
-| Parent-Child Communication | Parents pass callbacks; children invoke them to notify events.      |
-| Separation of Concerns     | Each component has a distinct responsibility, improving maintainability. |
-| Event Handling             | User actions trigger events handled via callbacks and state updates. |
-
-With this understanding, you are now equipped to explore or modify the codebase confidently, knowing how data and events move through the system.
-
----
-
-# Chapter 7: **Styling Components with Tailwind CSS**  
-
-# Chapter 7: Styling Components with Tailwind CSS
-
-In this chapter, we’ll explore how to leverage **Tailwind CSS** to style your Next.js components effectively. Tailwind provides a utility-first approach to CSS, allowing you to rapidly build responsive and customizable interfaces without leaving your markup. We will cover applying Tailwind utility classes throughout the components in our project, extending Tailwind’s default theme for customization, optimizing styles by purging unused CSS for performance, and combining Tailwind with component logic to achieve dynamic styling.
-
----
-
-## 7.1 Introduction to Tailwind CSS in Our Project
-
-Tailwind CSS is already configured in this Next.js repository, providing a rich set of utility classes that can be directly applied to JSX elements. This approach aligns well with React’s component-driven paradigm, enabling you to style elements inline with clean, semantic markup.
-
-Using Tailwind, you can:
-
-- Build **responsive layouts** with minimal effort using breakpoint prefixes (`sm:`, `md:`, `lg:`, etc.).
-- Customize colors, fonts, spacing, and more by extending Tailwind’s default theme.
-- Write **dynamic styles** that respond to component state or props.
-- Optimize your final CSS bundle by purging unused styles, improving load times.
-
----
-
-## 7.2 Applying Tailwind Utility Classes in Components
-
-Tailwind’s core strength lies in applying small, composable utility classes directly on elements.
-
-### Example: Styling a Search Input with Autocomplete
-
-Suppose we have a `SearchInput.tsx` component that integrates Google Places Autocomplete. Here’s a typical example of applying Tailwind classes:
-
-```tsx
-import React from 'react';
-
-interface SearchInputProps {
-  value: string;
-  onChange: (val: string) => void;
-}
-
-const SearchInput: React.FC<SearchInputProps> = ({ value, onChange }) => {
-  return (
-    <input
-      type="text"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder="Search places..."
-      className="
-        w-full
-        px-4
-        py-2
-        border
-        border-gray-300
-        rounded-md
-        focus:outline-none
-        focus:ring-2
-        focus:ring-blue-500
-        transition
-        duration-150
-        ease-in-out
-        "
-    />
-  );
-};
-
-export default SearchInput;
-```
-
-#### Explanation:
-
-- `w-full`: Makes the input span the full width of its container.
-- `px-4 py-2`: Adds horizontal and vertical padding.
-- `border border-gray-300 rounded-md`: Adds a subtle border with rounded corners.
-- `focus:outline-none focus:ring-2 focus:ring-blue-500`: Adds a blue ring on focus for accessibility and visual feedback.
-- `transition duration-150 ease-in-out`: Smooth animation on focus changes.
-
-### Responsive Styling Example
-
-To make components adapt to different screen sizes, use Tailwind’s responsive prefixes:
-
-```tsx
-<div className="p-4 sm:p-6 md:p-8 lg:p-10">
-  {/* Content */}
-</div>
-```
-
-- Padding increases with larger breakpoints: `p-4` by default, `p-6` on small screens (`sm`), and so forth.
-
----
-
-## 7.3 Extending Tailwind Themes and Customization
-
-While Tailwind comes with a sensible default theme, you often want to add project-specific colors, fonts, or spacing scales. This is done in the `tailwind.config.js` file.
-
-### Example: Adding Custom Colors
-
-```js
-// tailwind.config.js
-module.exports = {
+const config: Config = {
+  content: [
+    './app/**/*.{ts,tsx}',
+    './components/**/*.{ts,tsx}',
+  ],
   theme: {
     extend: {
       colors: {
-        brandBlue: '#1DA1F2',
-        brandGray: '#657786',
+        primary: '#1E40AF',  // Custom primary color
+        secondary: '#FBBF24', // Custom secondary color
       },
-      spacing: {
-        '72': '18rem',
-        '84': '21rem',
+      fontFamily: {
+        sans: ['Inter', 'ui-sans-serif', 'system-ui'],
       },
     },
   },
-  // other config options...
-};
+  plugins: [],
+}
+
+export default config
 ```
 
-Now, in your components, you can use these custom utilities:
+### Key Concepts
 
-```tsx
-<button className="bg-brandBlue text-white px-6 py-2 rounded hover:bg-blue-700">
-  Search
-</button>
+- **`content`**: Specifies files Tailwind should scan for class names. This enables “purging” unused styles to keep CSS bundle size minimal.
+- **`theme.extend`**: Adds or overrides default Tailwind tokens without losing defaults.
+- **TypeScript support**: Using `.ts` for the config enables type safety and better DX (developer experience).
+
+### Extensibility and Theming
+
+You can add custom utilities or plugins (e.g., forms, typography) here, allowing you to evolve the design system without rewriting components. For example, adding a typography plugin:
+
+```ts
+import typography from '@tailwindcss/typography'
+
+const config: Config = {
+  // ... other settings
+  plugins: [typography],
+}
 ```
-
-### Why Extend?
-
-- **Consistency:** Maintain a design system with consistent colors and spacing.
-- **Scalability:** Easily update styles globally by modifying the config.
-- **Reusability:** Avoid repeating raw values across your codebase.
 
 ---
 
-## 7.4 Purging Unused Styles for Performance
+## 7.3 PostCSS Configuration: `postcss.config.js`
 
-Tailwind generates a large CSS file by default, but Next.js and Tailwind’s standard setup include a purge step to remove unused styles in production.
+PostCSS is a tool for transforming CSS with JavaScript plugins. Tailwind CSS itself is a PostCSS plugin, so configuring PostCSS correctly is crucial.
 
-### How It Works
+### Purpose and Role
 
-- Tailwind scans your source files (`.tsx`, `.js`, `.html`, etc.) looking for class names.
-- Any classes not found in your source are removed from the final CSS bundle.
-- This drastically reduces the CSS size, improving page load times.
+- **Load and configure PostCSS plugins** that process your CSS.
+- **Chain tools** like autoprefixer (adds vendor prefixes), Tailwind, or CSSnano (minifier).
+- **Influence the CSS build pipeline** that runs during development and production builds.
 
-### Configuration Example
-
-In `tailwind.config.js`, the `content` field specifies which files Tailwind should scan:
+### Typical Configuration
 
 ```js
 module.exports = {
-  content: [
-    './app/**/*.{js,ts,jsx,tsx}',  // Next.js 13 app directory
-    './components/**/*.{js,ts,jsx,tsx}',
-    // add other folders as needed
-  ],
-  // ...
-};
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+    // cssnano can be added for production minification
+  },
+}
 ```
 
-### Tips for Purging
+### How This Impacts the Build
 
-- Avoid dynamically constructing class names as strings since Tailwind cannot detect them.
-- Use libraries like [`clsx`](https://github.com/lukeed/clsx) or [`classnames`](https://github.com/JedWatson/classnames) to conditionally apply classes safely.
+When you write styles (either in `.css` or inside `globals.css`), PostCSS runs these plugins sequentially:
+
+1. **Tailwind CSS plugin** generates utility classes based on your config.
+2. **Autoprefixer** adds vendor prefixes to support different browsers.
+3. (Optional) **Minifiers** optimize CSS size in production.
+
+If you want to add custom PostCSS plugins or modify the pipeline (e.g., add RTL support or custom transforms), this file is your entry point.
 
 ---
 
-## 7.5 Combining Tailwind with Component Logic for Dynamic Styling
+## 7.4 Next.js Configuration: `next.config.js`
 
-Tailwind works great with JavaScript logic to dynamically toggle styles based on component state or props.
+Next.js provides this file to customize and extend the framework’s behavior beyond defaults.
 
-### Example: Dynamic Button Disabled State
+### Purpose and Role
 
-```tsx
-import React from 'react';
-import clsx from 'clsx';
+- **Configure build optimizations:** image handling, Webpack customizations, environment variables.
+- **Enable experimental features** or middleware.
+- **Set routing rules or internationalization preferences.**
+- **Integrate with serverless functions or other backend capabilities.**
 
-interface ButtonProps {
-  disabled?: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
+### Example Configuration
+
+```js
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  reactStrictMode: true,
+  images: {
+    domains: ['maps.googleapis.com'], // Allow loading maps images
+  },
+  experimental: {
+    appDir: true, // Enables Next.js App Router (used in this project)
+  },
+  webpack(config, options) {
+    // Extend or customize webpack config here
+    return config
+  },
 }
 
-const Button: React.FC<ButtonProps> = ({ disabled, onClick, children }) => {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={clsx(
-        'px-4 py-2 rounded font-semibold transition-colors duration-150',
-        disabled
-          ? 'bg-gray-300 cursor-not-allowed text-gray-600'
-          : 'bg-blue-600 hover:bg-blue-700 text-white'
-      )}
-    >
-      {children}
-    </button>
-  );
-};
-
-export default Button;
+module.exports = nextConfig
 ```
 
-#### Explanation:
+### Influence on Build and Runtime
 
-- We use `clsx` to conditionally apply classes based on the `disabled` prop.
-- When disabled, the button has muted colors and a not-allowed cursor.
-- When enabled, it shows vibrant blue and supports hover styles.
-
-### Example: Responsive Layout with Conditional Classes
-
-```tsx
-<div className={clsx('p-4', isMobile ? 'bg-white' : 'bg-gray-100')}>
-  {/* content */}
-</div>
-```
-
-This enables combining Tailwind’s utility classes with React’s powerful logic for flexible UI.
+- By specifying image domains, Next.js optimizes loading images from Google Maps.
+- Enabling `appDir` activates the new file-based routing system used by this project.
+- Webpack customization allows adding loaders or plugins if your project grows more complex.
 
 ---
 
-## 7.6 Summary
+## 7.5 How These Configurations Work Together
 
-In this chapter, we covered:
+| Configuration        | Role in Styling / Build                        | Extensibility Potential                       |
+|----------------------|-----------------------------------------------|-----------------------------------------------|
+| `tailwind.config.ts` | Defines design tokens, utility classes, themes | Add plugins, extend themes, customize tokens |
+| `postcss.config.js`  | Runs CSS transformations and plugins          | Add custom PostCSS plugins, adjust pipeline  |
+| `next.config.js`     | Controls Next.js build, routing, optimization | Enable experimental features, customize webpack |
 
-- How to apply Tailwind CSS utility classes directly to components for rapid styling.
-- Using Tailwind’s responsive prefixes to build adaptable layouts.
-- Extending Tailwind’s default theme to add custom colors, spacing, and more.
-- Configuring purge options to remove unused CSS and optimize performance.
-- Combining Tailwind with component state and props for dynamic styling.
+This layered approach is powerful because:
 
-Tailwind CSS offers a powerful, efficient way to build consistent, responsive UIs in your Next.js applications. As you work with the components in this project—such as the Google Maps integration and places autocomplete—you’ll find Tailwind’s utility-first approach accelerates development while keeping styles maintainable and scalable.
-
----
-
-### Next Steps
-
-- Try refactoring some existing components in the repo to use Tailwind classes if they currently rely on custom CSS.
-- Explore the Tailwind documentation for more advanced utilities like animations, grids, and forms.
-- Experiment with theme extensions and dynamic styling patterns in your components.
-
-By mastering Tailwind CSS, you’ll be equipped to create polished, performant, and responsive user interfaces throughout this codebase and beyond.
+- Tailwind config controls *what styles* are available.
+- PostCSS config controls *how styles* are processed.
+- Next.js config controls *how the whole app* is built and served.
 
 ---
 
-# Chapter 8: **Best Practices, Accessibility, and Performance Considerations**  
+## 7.6 Practical Tips for Customization and Future Proofing
 
-# Chapter 8: Best Practices, Accessibility, and Performance Considerations
-
-In this chapter, we will cover essential best practices around **accessibility**, **performance optimization**, and **maintainability** in the context of a modern Next.js application that integrates Google Maps and Places Autocomplete. These practices ensure that your app is usable by all users, runs efficiently, and remains scalable as it grows.
+1. **Start with extending Tailwind’s theme** rather than overriding defaults to keep upgrade paths smooth.
+2. **Keep PostCSS config minimal** unless you have specific needs; complexity here can slow builds.
+3. **Use Next.js config for performance tuning and feature flags** but avoid making it overly complex.
+4. **Leverage TypeScript for `tailwind.config.ts`** to catch errors early.
+5. **Document any custom plugins or overrides** to help future maintainers understand your pipeline.
+6. **Test changes in both development and production builds** to catch any CSS or build issues early.
 
 ---
 
-## Table of Contents
+## 7.7 Summary
 
-- [Introduction](#introduction)  
-- [Accessibility Best Practices](#accessibility-best-practices)  
-  - [Stable IDs](#stable-ids)  
-  - [Keyboard Navigation](#keyboard-navigation)  
-  - [ARIA Attributes and Screen Reader Support](#aria-attributes-and-screen-reader-support)  
-- [Performance Optimization](#performance-optimization)  
-  - [Memoization with `useMemo` and `useCallback`](#memoization-with-usememo-and-usecallback)  
-  - [Minimal Next.js Configuration Reliance](#minimal-nextjs-configuration-reliance)  
-  - [Lazy Loading and Code Splitting](#lazy-loading-and-code-splitting)  
-- [Maintainability and Scalability](#maintainability-and-scalability)  
-  - [Clean Separation of Concerns](#clean-separation-of-concerns)  
-  - [Handling External API Integrations](#handling-external-api-integrations)  
-  - [Consistent Hook Usage and State Management](#consistent-hook-usage-and-state-management)  
-- [Conclusion](#conclusion)  
+In this chapter, we explored the three core configuration files in our Next.js + Google Maps API project:
+
+- The **Tailwind config** defines the design language and utility classes.
+- The **PostCSS config** orchestrates CSS transformations in the build pipeline.
+- The **Next.js config** controls the build system and runtime behavior of the app.
+
+Understanding these declarative configs not only demystifies how styling and builds work under the hood but also empowers you to extend and customize the project confidently for future needs. Mastering this configuration layer is a crucial step toward building scalable, maintainable, and performant applications.
+
+---
+
+*End of Chapter 7*
+
+---
+
+# Chapter 8: **Best Practices and Architectural Patterns in Modern React/Next.js Apps**  
+
+# Chapter 8: Best Practices and Architectural Patterns in Modern React/Next.js Apps
+
+In this chapter, we will reflect on the core design patterns and best practices employed throughout this Next.js + Google Maps API project. Understanding these architectural choices will help you write scalable, maintainable, and accessible React applications using Next.js, especially those that involve complex state management and side effects like API integrations.
 
 ---
 
 ## Introduction
 
-Building an interactive map application with autocomplete functionality requires careful attention to how users interact with the UI, how smoothly the app performs, and how easy the codebase is to maintain. Accessibility ensures inclusivity, performance optimization improves user experience and reduces costs, and maintainability helps your team iterate faster and avoid bugs.
+Modern React and Next.js applications benefit immensely from well-established architectural patterns that promote component reusability, maintainability, and performance. This project exemplifies these principles through:
+
+- Component-based architecture
+- Extensive use of React hooks for state and side effect management
+- Unidirectional data flow for predictable state changes
+- Clear separation of concerns
+- Accessibility-first UI development
+
+We will explore these patterns in detail, provide actionable recommendations for scaling and testing, and demonstrate how they contribute to a robust codebase.
 
 ---
 
-## Accessibility Best Practices
+## 1. Component-Based Architecture
 
-Accessibility (a11y) means designing and building your application so that it is usable by people with a wide range of abilities, including those who rely on screen readers or keyboard navigation. Here are key accessibility considerations in this codebase.
+### What is it?
 
-### Stable IDs
+React’s component-based architecture encourages building UIs from small, reusable, and composable pieces. Each component encapsulates its structure, style, and behavior.
 
-When working with components like autocomplete dropdowns or lists, stable, unique IDs are crucial for associating labels, inputs, and ARIA attributes correctly.
+### How this project uses it
 
-```tsx
-// Example: Using stable IDs for input and list association
-const inputId = "location-autocomplete-input";
-const listboxId = "location-autocomplete-listbox";
+- The project breaks down UI elements into focused components, e.g., `Map`, `Marker`, `SearchBox`, and layout components (`layout.tsx`).
+- Components are often "dumb" (presentational) or "smart" (container) depending on their responsibility.
+- Reusability is emphasized by isolating functionality, enabling components to be used across different pages or contexts without modification.
 
-return (
-  <>
-    <label htmlFor={inputId}>Location</label>
-    <input
-      id={inputId}
-      aria-autocomplete="list"
-      aria-controls={listboxId}
-      aria-expanded={isOpen}
-      onChange={handleChange}
-      // other props
-    />
-    {isOpen && (
-      <ul id={listboxId} role="listbox">
-        {suggestions.map((suggestion, index) => (
-          <li key={suggestion.place_id} role="option" aria-selected={index === highlightedIndex}>
-            {suggestion.description}
-          </li>
-        ))}
-      </ul>
-    )}
-  </>
-);
-```
-
-- **Why?** Screen readers rely on these IDs to map between inputs and their options. Using a consistent ID pattern helps maintain this relationship.
-
-### Keyboard Navigation
-
-Users may not always use a mouse. Keyboard navigation is essential for accessibility:
-
-- **Focus management:** Ensure users can navigate through inputs and dropdown options using `Tab`, `ArrowUp`, `ArrowDown`, `Enter`, and `Escape` keys.
-- **Highlighting:** Visually and programmatically highlight the currently focused option.
-- **Event handling:** Properly handle key events to move focus and select options.
+### Example
 
 ```tsx
-const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-  switch (event.key) {
-    case "ArrowDown":
-      event.preventDefault();
-      setHighlightedIndex((prev) => Math.min(prev + 1, suggestions.length - 1));
-      break;
-    case "ArrowUp":
-      event.preventDefault();
-      setHighlightedIndex((prev) => Math.max(prev - 1, 0));
-      break;
-    case "Enter":
-      event.preventDefault();
-      if (highlightedIndex >= 0) {
-        selectSuggestion(suggestions[highlightedIndex]);
-      }
-      break;
-    case "Escape":
-      setIsOpen(false);
-      break;
-  }
-};
-```
-
-- **Tip:** Use `aria-activedescendant` to link the input with the active option for screen readers.
-
-### ARIA Attributes and Screen Reader Support
-
-ARIA attributes provide semantic meaning to UI elements that are not naturally accessible.
-
-- Use `role="combobox"` for the input container.
-- Use `aria-expanded`, `aria-haspopup`, and `aria-controls` to indicate dropdown state.
-- Use `role="listbox"` for the dropdown container and `role="option"` for each item.
-- Mark the selected option with `aria-selected="true"`.
-
-```tsx
-<input
-  role="combobox"
-  aria-autocomplete="list"
-  aria-expanded={isOpen}
-  aria-controls={listboxId}
-  aria-activedescendant={highlightedOptionId}
-/>
-<ul role="listbox" id={listboxId}>
-  {suggestions.map((option, index) => (
-    <li
-      id={`option-${index}`}
-      role="option"
-      aria-selected={index === highlightedIndex}
-      key={option.place_id}
-    >
-      {option.description}
-    </li>
-  ))}
-</ul>
-```
-
----
-
-## Performance Optimization
-
-Performance is critical for user experience, especially with interactive maps and autocomplete that rely on external API calls and dynamic rendering.
-
-### Memoization with `useMemo` and `useCallback`
-
-React's `useMemo` and `useCallback` hooks help avoid unnecessary recalculations and re-renders:
-
-- Use `useMemo` to memoize expensive computations or derived data.
-- Use `useCallback` to memoize functions passed as props to child components to avoid triggering re-renders.
-
-```tsx
-const memoizedSuggestions = useMemo(() => {
-  return suggestions.filter((s) => s.description.toLowerCase().includes(inputValue.toLowerCase()));
-}, [suggestions, inputValue]);
-
-const handleSelect = useCallback((suggestion) => {
-  setSelectedSuggestion(suggestion);
-}, []);
-```
-
-- **Why important?** Without memoization, every render could cause expensive computations or re-create functions, negatively impacting performance.
-
-### Minimal Next.js Configuration Reliance
-
-- Avoid heavy or unnecessary Next.js customizations unless essential.
-- Use built-in features like API routes, incremental static regeneration (ISR), and image optimization wisely.
-- Keep configuration minimal to reduce build time and complexity.
-
-For example, rely on Next.js’s default Webpack config and only add custom plugins/loaders when necessary.
-
-### Lazy Loading and Code Splitting
-
-- Dynamically import heavy components or third-party libraries (like Google Maps scripts) only when needed.
-- Use Next.js dynamic imports with SSR disabled for client-only components.
-
-```tsx
-import dynamic from "next/dynamic";
-
-const Map = dynamic(() => import("../components/Map"), { ssr: false });
-```
-
-- This reduces initial bundle size and speeds up page load.
-
----
-
-## Maintainability and Scalability
-
-A codebase integrating external APIs and complex UI interactions can become hard to maintain without good practices.
-
-### Clean Separation of Concerns
-
-- Separate UI components, API interaction code, and utility functions.
-- Use hooks to encapsulate logic (e.g., a custom `usePlacesAutocomplete` hook).
-- Avoid large "god" components by splitting features into smaller, reusable pieces.
-
-Example folder structure:
-
-```
-/components
-  /Autocomplete
-  /Map
-/hooks
-  usePlacesAutocomplete.ts
-/lib
-  google-maps.ts
-/pages
-  index.tsx
-```
-
-### Handling External API Integrations
-
-- Abstract API calls into reusable functions or custom hooks.
-- Handle API keys securely via environment variables (`process.env`).
-- Implement error handling and loading states gracefully.
-- Cache responses when possible to reduce redundant network calls.
-
-```tsx
-// Example custom hook for Places Autocomplete
-function usePlacesAutocomplete(input: string) {
-  const [results, setResults] = useState([]);
-
-  useEffect(() => {
-    if (!input) return;
-
-    const service = new window.google.maps.places.AutocompleteService();
-    service.getPlacePredictions({ input }, (predictions, status) => {
-      if (status === window.google.maps.places.PlacesServiceStatus.OK) {
-        setResults(predictions);
-      } else {
-        setResults([]);
-      }
-    });
-  }, [input]);
-
-  return results;
+// Presentational Marker component
+function Marker({ position, onClick }: { position: LatLng; onClick: () => void }) {
+  return <div className="marker" onClick={onClick} style={{ top: position.lat, left: position.lng }} />;
 }
 ```
 
-### Consistent Hook Usage and State Management
+### Benefits
 
-- Follow React hooks best practices:
-  - Only call hooks at the top level.
-  - Use custom hooks to share logic.
-- Manage state locally when possible; use context or state management libraries only if necessary.
-- Keep state minimal and normalized to avoid unnecessary re-renders.
+- Easier to reason about and test individual parts of the UI
+- Encourages code reuse and consistency
+- Simplifies collaboration among developers by enforcing modularity
+
+---
+
+## 2. Hooks for State and Side Effects
+
+### What is it?
+
+React hooks (`useState`, `useEffect`, `useCallback`, `useMemo`, etc.) provide a declarative and succinct way to manage component state and side effects.
+
+### How this project uses it
+
+- State management is localized using `useState` inside components where appropriate.
+- Side effects such as fetching Google Maps data, event listeners, or timers are managed with `useEffect`.
+- Memoization hooks like `useCallback` and `useMemo` optimize rendering by preventing unnecessary recalculations or re-renders.
+- Custom hooks abstract common logic (e.g., `useMap`, which encapsulates Google Maps API initialization and event management).
+
+### Example
+
+```tsx
+function useMap(center: LatLng) {
+  const [map, setMap] = useState<google.maps.Map | null>(null);
+
+  useEffect(() => {
+    if (!map) {
+      const mapInstance = new google.maps.Map(document.getElementById('map')!, {
+        center,
+        zoom: 10,
+      });
+      setMap(mapInstance);
+    }
+  }, [map, center]);
+
+  return map;
+}
+```
+
+### Benefits
+
+- Encourages separation of logic from UI
+- Makes code easier to test and reuse
+- Improves performance by minimizing unnecessary updates
+
+---
+
+## 3. Unidirectional Data Flow
+
+### What is it?
+
+Data flows in a single direction: from parent components down to children via props, and from children back to parents through callbacks. This pattern ensures predictable state changes and easier debugging.
+
+### How this project uses it
+
+- Parents own state and pass down data and event handlers to children.
+- Children communicate user interactions back to parents through callback props.
+- This approach avoids complex two-way bindings, reducing bugs and making application state easier to track.
+
+### Example
+
+```tsx
+function MapContainer() {
+  const [selectedLocation, setSelectedLocation] = useState<LatLng | null>(null);
+
+  function handleMarkerClick(location: LatLng) {
+    setSelectedLocation(location);
+  }
+
+  return (
+    <Map center={{ lat: 40, lng: -74 }}>
+      <Marker position={{ lat: 40, lng: -74 }} onClick={() => handleMarkerClick({ lat: 40, lng: -74 })} />
+    </Map>
+  );
+}
+```
+
+### Benefits
+
+- Simplifies data management and debugging
+- Makes component interactions explicit and easier to follow
+- Facilitates state lifting and shared state management
+
+---
+
+## 4. Separation of Concerns
+
+### What is it?
+
+Separating application logic into distinct layers or modules (UI, state management, API calls, utilities) to reduce complexity and improve maintainability.
+
+### How this project uses it
+
+- UI components focus solely on rendering and user interaction.
+- API calls to Google Maps are encapsulated within hooks or service modules.
+- Utility functions (e.g., coordinate transformations) are placed in dedicated helper files.
+- Next.js routing and layouts are clearly separated from page-specific logic.
+
+### Benefits
+
+- Easier to update or replace parts of the system without affecting others
+- Improves code readability and reduces duplication
+- Enhances testability by isolating logic
+
+---
+
+## 5. Accessibility (A11y)
+
+### Why accessibility matters
+
+Building accessible apps ensures that all users, regardless of ability, can use your application. It also improves SEO and overall user experience.
+
+### How this project incorporates accessibility
+
+- Interactive elements have appropriate ARIA attributes.
+- Keyboard navigation is supported with semantic HTML and event handlers.
+- Color contrasts and font sizes follow accessibility guidelines.
+- The Google Maps components are wrapped in accessible containers with descriptive labels.
+
+### Example
+
+```tsx
+<button aria-label="Zoom in on map" onClick={zoomIn}>
+  +
+</button>
+```
+
+### Recommendations
+
+- Always test with screen readers and keyboard navigation.
+- Use tools like [axe](https://www.deque.com/axe/) or Lighthouse to audit accessibility.
+- Maintain semantic HTML structure.
+
+---
+
+## 6. Recommendations for Scaling, Testing, and Maintenance
+
+### Scaling
+
+- **Modularize components:** Keep components small and focused.
+- **Use context or state management libraries** (like Redux or Zustand) if state becomes too complex.
+- **Lazy load components** to improve performance on large apps.
+- **Consistent folder structure:** Group related components, hooks, and utilities logically.
+
+### Testing
+
+- **Unit test** individual components and hooks using libraries like React Testing Library.
+- **Integration test** interactions between components and API calls.
+- **End-to-end test** the full user experience with Cypress or Playwright.
+- Mock external dependencies (Google Maps API) during tests to ensure reliability.
+
+### Maintenance
+
+- Enforce **code linting and formatting** (ESLint, Prettier).
+- Maintain **clear documentation** of component APIs and hooks.
+- Use **TypeScript** to catch bugs early via static typing.
+- Regularly refactor and remove unused code to prevent technical debt.
 
 ---
 
 ## Conclusion
 
-Implementing accessibility, performance optimizations, and maintainability best practices will make your Next.js map and autocomplete application robust, user-friendly, and scalable.  
+This project demonstrates how modern React and Next.js apps can be architected to be scalable, maintainable, and accessible by embracing:
 
-- **Accessibility** ensures everyone can use your app regardless of ability, leveraging stable IDs, keyboard navigation, and ARIA attributes.  
-- **Performance** improves with memoization, minimal configuration, and lazy loading, resulting in faster and smoother user experiences.  
-- **Maintainability** is achieved through modular code, clean separation of concerns, and thoughtful API integration handling.
+- A component-based architecture that promotes reusability and modularity
+- React hooks to manage state and side effects declaratively
+- Unidirectional data flow for predictable and manageable state changes
+- Clear separation of concerns to isolate responsibilities
+- Accessibility best practices to reach all users
 
-By applying these strategies, your application will be well-positioned for future growth and diverse user needs.
+By applying these design patterns and best practices, you can build robust applications that are easier to develop, test, and maintain over time.
 
 ---
 
-**Next Steps:**  
-Consider integrating automated accessibility testing tools (e.g., Axe, Lighthouse) and performance profiling (e.g., React DevTools Profiler) as part of your development workflow to continuously monitor and improve your application.
+This concludes the reflection on architectural patterns and best practices in this Next.js + Google Maps API project. In the next chapter, we will explore deployment strategies and performance optimizations tailored for modern React applications.
 
 ---
 

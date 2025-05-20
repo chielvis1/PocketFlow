@@ -4,7 +4,7 @@ examples:
   tool: get_chapter
 health: /health
 host: localhost
-name: github-lmac-1-google-map-search-nextjs
+name: github_lmac-1_google-map-search-nextjs
 port: 8000
 specEndpoint: /mcp_spec
 tools:
