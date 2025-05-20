@@ -1,0 +1,12 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install dependencies
+RUN pip install fastmcp requests
+
+# Copy the client script
+COPY test_fastmcp_client.py .
+
+# Run the client
+CMD ["python", "test_fastmcp_client.py"]

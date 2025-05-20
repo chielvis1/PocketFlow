@@ -2,12 +2,10 @@
 MCP server utilities for Repository Analysis to MCP Server system.
 """
 
-import json
-import logging
 import os
+import json
 import subprocess
 import sys
-import time
 from typing import Dict, List, Any, Optional, Callable
 
 from .monitoring import log_execution_time
@@ -103,135 +101,93 @@ def calculate_overall_difficulty(implementation_guides: Dict[str, Any]) -> str:
     else:
         return "Hard"
 
-def start_mcp_server(mcp: Any, host: str = "0.0.0.0", port: int = 8000, debug: bool = False, return_info: bool = True) -> Any:
+def start_mcp_server(mcp: Any, host: str = "localhost", port: int = 8000, debug: bool = False) -> Any:
     """
-    Start the MCP server with the given host and port.
-    For FastMCP objects, this will use the run() method.
+    Starts the MCP server and exposes it via API.
     
     Args:
-        mcp: The MCP server object
-        host: The host to bind to (default: "0.0.0.0")
-        port: The port to bind to (default: 8000)
-        debug: Whether to enable debug logging (default: False)
-        return_info: Whether to return server info (default: True)
-    
+        mcp: Configured MCP server instance
+        host: Host to bind to
+        port: Port to listen on
+        debug: Enable debug logging
+        
     Returns:
-        dict: Server information in JSON format
+        Running server process information
     """
-    if debug:
-        logging.basicConfig(level=logging.DEBUG)
-        logger = logging.getLogger("mcp_server")
-        logger.setLevel(logging.DEBUG)
-        logger.debug("Debug logging enabled for MCP server")
-        logger.debug(f"Server configuration: host={host}, port={port}")
-        logger.debug(f"Server name: {getattr(mcp, 'name', 'unknown')}")
-        logger.debug(f"Available tools: {dir(mcp)}")
-        logger.debug("Starting server...")
-        print("Debug logging enabled for MCP server")
-    
-    print(f"Starting MCP server at http://{host}:{port}...")
-    
     try:
-        # For FastMCP objects (version 2.x)
-        if hasattr(mcp, "run"):
-            # Start the server in a separate thread
-            import threading
+        # Configure debug logging if requested
+        if debug:
+            import logging
+            logging.basicConfig(
+                level=logging.DEBUG,
+                format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            )
+            logging.getLogger("fastmcp").setLevel(logging.DEBUG)
+            logging.getLogger("tutorial_mcp").setLevel(logging.DEBUG)
             
-            def run_server():
-                # FastMCP.run() doesn't accept host/port directly
-                try:
-                    # Use run_http_async which accepts host and port
-                    import asyncio
-                    # Force host to be "0.0.0.0" to listen on all interfaces
-                    asyncio.run(mcp.run_http_async(host="0.0.0.0", port=port))
-                except Exception as e:
-                    print(f"Error in server thread: {e}")
+            # Get logger for this function
+            logger = logging.getLogger("mcp_server")
+            logger.setLevel(logging.DEBUG)
             
-            server_thread = threading.Thread(target=run_server, daemon=True)
-            server_thread.start()
+            logger.debug("Debug logging enabled for MCP server")
+            logger.debug(f"Server configuration: host={host}, port={port}")
+            logger.debug(f"Server name: {getattr(mcp, 'name', 'unnamed')}")
             
-            # Create a mock process object for status checks
-            class MockProcess:
-                def poll(self):
-                    return None if server_thread.is_alive() else 1
-                
-                def terminate(self):
-                    # No direct way to stop the server
-                    pass
+            # Log available tools if possible
+            try:
+                if hasattr(mcp, 'tools'):
+                    tools = mcp.tools
+                    logger.debug(f"Available tools: {', '.join(tools)}")
+            except Exception as e:
+                logger.debug(f"Could not list tools: {str(e)}")
             
-            process = MockProcess()
+            print("Debug logging enabled for MCP server")
+        
+        # Always start the FastMCP server
+        print(f"Starting MCP server at http://{host}:{port}...")
+        
+        # More detailed logging in debug mode
+        if debug:
+            logger.debug("Calling mcp.serve() to start the server...")
             
-            # Give the server time to start
-            import time
-            time.sleep(2)
+        server_process = mcp.serve(host=host, port=port)
+        
+        if debug:
+            logger.debug(f"Server process started: {server_process}")
             
-            if debug:
-                logger.debug("Server process started")
-            
-            print(f"MCP server started successfully at http://{host}:{port}")
-            
-            # Create server info with mcpServers format for container orchestration
-            server_info = {
-                "mcpServers": [
-                    {
-                        "name": getattr(mcp, "name", "mcp_server"),
-                        "transport": "http",
-                        "host": host,
-                        "port": port
-                    }
-                ],
-                "process": process,
-                "url": f"http://{host}:{port}",
-                "status": "running"
-            }
-            
-            # Print server info as JSON for container orchestration
-            import json
-            server_json = json.dumps({"mcpServers": server_info["mcpServers"]}, indent=2)
-            print(server_json)
-            
-            if debug:
-                logger.debug(f"Server info: {server_json}")
-            
-            return server_info
-        else:
-            # For other MCP implementations that might use serve()
-            server_process = mcp.serve(host=host, port=port)
-            
-            if debug:
-                logger.debug(f"Server process started")
-            
-            print(f"MCP server started successfully at http://{host}:{port}")
-            
-            # Create server info with mcpServers format for container orchestration
-            server_info = {
-                "mcpServers": [
-                    {
-                        "name": getattr(mcp, "name", "mcp_server"),
-                        "transport": "http",
-                        "host": host,
-                        "port": port
-                    }
-                ],
-                "process": server_process,
-                "url": f"http://{host}:{port}",
-                "status": "running"
-            }
-            
-            # Print server info as JSON for container orchestration
-            server_json = json.dumps({"mcpServers": server_info["mcpServers"]}, indent=2)
-            print(server_json)
-            
-            if debug:
-                logger.debug(f"Server info: {server_json}")
-            
-            return server_info
+        print(f"MCP server started successfully at http://{host}:{port}")
+        
+        # Create server info with mcpServers format for container orchestration
+        server_info = {
+            "mcpServers": [
+                {
+                    "name": getattr(mcp, "name", "mcp_server"),
+                    "transport": "http",
+                    "host": host,
+                    "port": port
+                }
+            ],
+            "process": server_process,
+            "url": f"http://{host}:{port}",
+            "status": "running"
+        }
+        
+        # Print server info as JSON for container orchestration
+        import json
+        server_json = json.dumps({"mcpServers": server_info["mcpServers"]}, indent=2)
+        print(server_json)
+        
+        if debug:
+            logger.debug(f"Server info: {server_json}")
+        
+        return server_info
     except Exception as e:
         import traceback
         error_msg = f"Error starting MCP server: {str(e)}"
         print(error_msg)
         
         if debug:
+            import logging
             logger = logging.getLogger("mcp_server")
             logger.error(error_msg)
             logger.error("Detailed traceback:")

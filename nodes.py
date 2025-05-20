@@ -11,6 +11,7 @@ import os
 import json
 import sys
 import subprocess
+import shutil
 
 class ParseRepositoryURLNode(Node):
     """
@@ -761,47 +762,20 @@ class GenerateMCPServerNode(Node):
     def exec(self, inputs):
         from utils.llm import call_llm
         import yaml
+        import shutil
         output_dir = inputs["output_dir"]
         tutorial_index = inputs["tutorial_index"]
         features = inputs["features"]
 
-        prompt = f"""
-Generate a YAML specification and Python MCP server code that:
-- Uses the environment variable TUTORIAL_NAME to dynamically determine the tutorial path
-- Serves files from a dynamically constructed path: "/tutorials/$TUTORIAL_NAME"
-- Exposes an endpoint /health to check server status
-- Exposes an endpoint /mcp_spec to return the MCP specification
-- Exposes an endpoint /index to return the contents of the index.md file
-- Exposes endpoints for each chapter file with path parameters (e.g., /chapter/1)
-- Includes a 'features' section listing: {features}
-- Exits with an error if the TUTORIAL_NAME environment variable is not set
-- Prints server information as JSON to stdout when starting for logging purposes
-- IMPORTANT: Server information must follow the MCP specification format with "mcpServers" as the root key
-
-First output the YAML spec in ```yaml ... ``` then the Python server code in ```python ... ``` format.
-"""
-        raw_output = call_llm(prompt)
-
-        yaml_str = ""
-        code_str = ""
-        if "```yaml" in raw_output:
-            yaml_str = raw_output.split("```yaml")[1].split("```", 1)[0].strip()
-        if "```python" in raw_output:
-            code_str = raw_output.split("```python")[1].split("```", 1)[0].strip()
-
-        raw_spec = yaml.safe_load(yaml_str)
-        server_name = raw_spec.get("name") or os.path.basename(output_dir.rstrip('/'))
-        version = raw_spec.get("version", "1.0.0")
-        host = raw_spec.get("host", "localhost")
-        port = raw_spec.get("port", 8000)
+        # Generate MCP spec
         mcp_spec = {
-            "name": server_name,
-            "version": version,
-            "transport": raw_spec.get("transport", "stdio"),
-            "host": host,
-            "port": port,
-            "health": raw_spec.get("health", "/health"),
-            "specEndpoint": raw_spec.get("specEndpoint", "/mcp_spec"),
+            "name": os.path.basename(output_dir.rstrip('/')),
+            "version": "1.0.0",
+            "transport": "http",
+            "host": "localhost",
+            "port": 8000,
+            "health": "/health",
+            "specEndpoint": "/mcp_spec",
             "tools": [
                 {
                     "name": "chapter_index",
@@ -828,168 +802,74 @@ First output the YAML spec in ```yaml ... ``` then the Python server code in ```
                 {"tool": "get_chapter", "args": {"n": 1}}
             ]
         }
-        spec = mcp_spec
         
-        # Check if the LLM-generated code includes mcpServers format
-        has_mcp_servers = "mcpServers" in code_str
+        # Add features if available
+        if features:
+            mcp_spec["features"] = features
         
-        # If the LLM doesn't generate code that uses environment variables properly or doesn't have mcpServers,
-        # ensure we have a fallback implementation
-        if "TUTORIAL_NAME = os.environ.get(" not in code_str or not has_mcp_servers:
-            code_str = """from http.server import BaseHTTPRequestHandler, HTTPServer
-import os
-import urllib.parse
-import json
-import sys
-
-# Use environment variable for the tutorial name instead of hardcoding
-TUTORIAL_NAME = os.environ.get("TUTORIAL_NAME")
-if not TUTORIAL_NAME:
-    print("Error: TUTORIAL_NAME environment variable not set")
-    sys.exit(1)
-
-# Construct the root directory dynamically
-ROOT_DIR = f"/tutorials/{TUTORIAL_NAME}"
-INDEX_FILE = "index.md"
-
-class MCPRequestHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        parsed_path = urllib.parse.urlparse(self.path)
-        path = parsed_path.path
-
-        if path == "/health":
-            self.serve_health()
-        elif path == "/mcp_spec":
-            self.serve_mcp_spec()
-        elif path == "/index":
-            self.serve_index()
-        elif path.startswith("/chapter/"):
-            self.serve_chapter(path)
-        else:
-            self.send_error(404, "Not Found")
-
-    def serve_health(self):
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        response = json.dumps({"status": "ok"})
-        self.send_header("Content-Length", str(len(response)))
-        self.end_headers()
-        self.wfile.write(response.encode('utf-8'))
-
-    def serve_mcp_spec(self):
-        spec_path = os.path.join(ROOT_DIR, "mcp_spec.yaml")
-        if not os.path.isfile(spec_path):
-            self.send_error(404, "MCP spec file not found")
-            return
-
-        try:
-            with open(spec_path, "rb") as f:
-                content = f.read()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/yaml")
-            self.send_header("Content-Length", str(len(content)))
-            self.end_headers()
-            self.wfile.write(content)
-        except Exception as e:
-            self.send_error(500, f"Error reading MCP spec file: {e}")
-
-    def serve_index(self):
-        index_path = os.path.join(ROOT_DIR, INDEX_FILE)
-        if not os.path.isfile(index_path):
-            self.send_error(404, "Index file not found")
-            return
-
-        try:
-            with open(index_path, "rb") as f:
-                content = f.read()
-            self.send_response(200)
-            self.send_header("Content-Type", "text/markdown; charset=utf-8")
-            self.send_header("Content-Length", str(len(content)))
-            self.end_headers()
-            self.wfile.write(content)
-        except Exception as e:
-            self.send_error(500, f"Error reading index file: {e}")
-
-    def serve_chapter(self, path):
-        # Expecting /chapter/{number}
-        parts = path.strip("/").split("/")
-        if len(parts) != 2:
-            self.send_error(404, "Invalid chapter path")
-            return
-
-        chapter_num = parts[1]
-        if not chapter_num.isdigit():
-            self.send_error(400, "Invalid chapter number")
-            return
-
-        # Format chapter filename based on the actual files in the directory
-        chapter_num_padded = chapter_num.zfill(2)
-        # Look for files that match the pattern chapter_XX__*.md
-        chapter_files = [f for f in os.listdir(ROOT_DIR) if f.startswith(f"chapter_{chapter_num_padded}_") and f.endswith(".md")]
-        
-        if not chapter_files:
-            self.send_error(404, f"Chapter {chapter_num} file not found")
-            return
-            
-        chapter_path = os.path.join(ROOT_DIR, chapter_files[0])
-
-        try:
-            with open(chapter_path, "rb") as f:
-                content = f.read()
-            self.send_response(200)
-            self.send_header("Content-Type", "text/markdown; charset=utf-8")
-            self.send_header("Content-Length", str(len(content)))
-            self.end_headers()
-            self.wfile.write(content)
-        except Exception as e:
-            self.send_error(500, f"Error reading chapter file: {e}")
-
-
-def run(server_class=HTTPServer, handler_class=MCPRequestHandler, port=8000):
-    server_address = ('', port)
-    httpd = server_class(server_address, handler_class)
-    
-    # Print server information in JSON format for the main.py script to extract
-    # Format it according to MCP specification with mcpServers as an object
-    server_info = {
-        "mcpServers": {
-            TUTORIAL_NAME: {
-                "host": "localhost",
-                "port": port,
-                "transport": "stdio",  # or "sse" if using Server-Sent Events
-                "version": "1.0.0",
-                "status": "running",
-                "tutorial_path": ROOT_DIR,
-                "endpoints": {
-                    "health": "/health",
-                    "spec": "/mcp_spec",
-                    "index": "/index",
-                    "chapter": "/chapter/{n}"
-                },
-                "command": f"python {os.path.basename(__file__)}"  # Include command for stdio transport
-            }
-        }
-    }
-    print(json.dumps(server_info, indent=2))
-    sys.stdout.flush()  # Ensure output is visible in Docker logs
-    
-    print(f"Starting MCP server on port {port} for tutorial: {TUTORIAL_NAME}...")
-    sys.stdout.flush()  # Ensure output is visible in Docker logs
-    httpd.serve_forever()
-
-
-if __name__ == "__main__":
-    run()"""
-
+        # Save the MCP spec to the output directory
         spec_path = os.path.join(output_dir, "mcp_spec.yaml")
         with open(spec_path, "w") as f:
-            yaml.dump(spec, f)
-        server_path = os.path.join(output_dir, "simple_mcp_server.py")
-        with open(server_path, 'w') as f:
-            f.write(code_str)
+            yaml.dump(mcp_spec, f)
+        
+        # Copy the enhanced_mcp_server.py to the output directory
+        source_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "enhanced_mcp_server.py")
+        
+        # Try alternative paths if the first one doesn't work
+        if not os.path.exists(source_path):
+            source_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "enhanced_mcp_server.py")
+        
+        if not os.path.exists(source_path):
+            source_path = os.path.abspath("enhanced_mcp_server.py")
+            
+        if os.path.exists(source_path):
+            target_path = os.path.join(output_dir, "enhanced_mcp_server.py")
+            shutil.copy2(source_path, target_path)
+            
+            # Copy required utility files
+            utils_dir = os.path.join(output_dir, "utils")
+            os.makedirs(utils_dir, exist_ok=True)
+            
+            # Find the utils directory
+            base_dir = os.path.dirname(source_path)
+            utils_source_dir = os.path.join(base_dir, "utils")
+            if not os.path.exists(utils_source_dir):
+                utils_source_dir = os.path.abspath("utils")
+                
+            if os.path.exists(utils_source_dir):
+                # Copy tutorial_mcp.py
+                src_tutorial_mcp = os.path.join(utils_source_dir, "tutorial_mcp.py")
+                if os.path.exists(src_tutorial_mcp):
+                    shutil.copy2(src_tutorial_mcp, os.path.join(utils_dir, "tutorial_mcp.py"))
+                
+                # Copy tutorial_mcp_advanced.py
+                src_tutorial_mcp_adv = os.path.join(utils_source_dir, "tutorial_mcp_advanced.py")
+                if os.path.exists(src_tutorial_mcp_adv):
+                    shutil.copy2(src_tutorial_mcp_adv, os.path.join(utils_dir, "tutorial_mcp_advanced.py"))
+                
+                # Copy mcp.py
+                src_mcp = os.path.join(utils_source_dir, "mcp.py")
+                if os.path.exists(src_mcp):
+                    shutil.copy2(src_mcp, os.path.join(utils_dir, "mcp.py"))
+                
+                # Copy monitoring.py
+                src_monitoring = os.path.join(utils_source_dir, "monitoring.py")
+                if os.path.exists(src_monitoring):
+                    shutil.copy2(src_monitoring, os.path.join(utils_dir, "monitoring.py"))
+                
+                # Create __init__.py in utils directory
+                with open(os.path.join(utils_dir, "__init__.py"), "w") as f:
+                    f.write("# Utils package for enhanced MCP server\n")
+                
+                server_path = target_path
+            else:
+                return {"error": "Could not find utils directory to copy required files"}
+        else:
+            # Fallback if enhanced_mcp_server.py doesn't exist
+            return {"error": "Could not find enhanced_mcp_server.py to copy to the output directory"}
 
         # Return spec and server code path for post-processing
-        return {"mcp_spec": spec, "mcp_server_code": server_path}
+        return {"mcp_spec": mcp_spec, "mcp_server_code": server_path}
 
     def post(self, shared, prep_res, exec_res):
         # Handle errors from exec
@@ -1006,51 +886,98 @@ class StartMCPServerNode(Node):
     Node to start an MCP server for a generated tutorial, dynamically serving index and chapters.
     """
     def prep(self, shared):
-        # Read spec and determine tutorials root
-        spec = shared.get("mcp_spec")
-        tutorial_root = os.environ.get("TUTORIAL_NAME") or shared.get("tutorial_output_dir")
-        host = spec.get("host", "localhost")
-        port = spec.get("port", 8000)
-        return spec, tutorial_root, host, port
+        return {
+            "output_dir": shared.get("tutorial_output_dir"),
+            "mcp_server_code": shared.get("mcp_server_code"),
+            "port": shared.get("mcp_port", 8000),
+            "debug": shared.get("debug", False)
+        }
 
     def exec(self, inputs):
-        # Launch the simple MCP server script generated in the tutorial directory
-        spec, tutorial_root, host, port = inputs
-        import os
+        import subprocess
         import time
-        script_path = os.path.join(tutorial_root, "simple_mcp_server.py")
-        if not os.path.exists(script_path):
-            return {"error": f"simple_mcp_server.py not found at {script_path}"}
-        # Start the server script with the same Python interpreter
-        proc = subprocess.Popen([sys.executable, script_path], cwd=tutorial_root)
-        # Give the server a moment to start
-        time.sleep(2)
-        return {"host": host, "port": port, "process_id": proc.pid, "url": f"http://{host}:{port}", "status": "running"}
+        import os
+        import json
+        import signal
+        import sys
+        
+        output_dir = inputs["output_dir"]
+        mcp_server_code = inputs["mcp_server_code"]
+        port = inputs["port"]
+        debug = inputs["debug"]
+        
+        if not os.path.exists(mcp_server_code):
+            return {"error": f"MCP server code not found at {mcp_server_code}"}
+        
+        # Set environment variables for the server
+        env = os.environ.copy()
+        env["TUTORIAL_NAME"] = os.path.basename(output_dir.rstrip('/'))
+        
+        # Add debug flag if enabled
+        debug_args = ["--debug"] if debug else []
+        
+        # Start the MCP server as a subprocess
+        cmd = [sys.executable, mcp_server_code, "--port", str(port)] + debug_args
+        
+        try:
+            process = subprocess.Popen(
+                cmd,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1
+            )
+            
+            # Give the server a moment to start
+            time.sleep(2)
+            
+            # Check if process is still running
+            if process.poll() is not None:
+                # Process has terminated, get error output
+                _, stderr = process.communicate()
+                return {"error": f"MCP server failed to start: {stderr}"}
+            
+            # Read the first line of stdout to get the server info
+            server_info = None
+            for i in range(10):  # Try reading a few times
+                line = process.stdout.readline().strip()
+                if line:
+                    try:
+                        # Parse the JSON server info
+                        server_info = json.loads(line)
+                        break
+                    except json.JSONDecodeError:
+                        # Not valid JSON, might be a log message
+                        continue
+                time.sleep(0.5)
+            
+            if not server_info:
+                # Kill the process if we couldn't get server info
+                process.terminate()
+                return {"error": "Failed to get server info from MCP server"}
+            
+            # Return the process and server info
+            return {
+                "process": process,
+                "server_info": server_info,
+                "cmd": " ".join(cmd)
+            }
+            
+        except Exception as e:
+            return {"error": f"Failed to start MCP server: {str(e)}"}
 
     def post(self, shared, prep_res, exec_res):
-        # Combine spec and server info for best-practice output
-        spec = shared.get('mcp_spec', {})
-        server_info = exec_res
+        if isinstance(exec_res, dict) and exec_res.get("error"):
+            shared["error"] = exec_res.get("error")
+            return "error"
         
-        # Create proper MCP format with mcpServers as an object
-        mcp_formatted = {
-            "mcpServers": {
-                spec.get("name", "tutorial_server"): {
-                    "host": server_info.get("host", "localhost"),
-                    "port": server_info.get("port", 8000),
-                    "transport": spec.get("transport", "stdio"),
-                    "version": spec.get("version", "1.0.0"),
-                    "tutorial_path": server_info.get("tutorial_path", ""),
-                    "endpoints": server_info.get("endpoints", {}),
-                    "status": server_info.get("status", "running")
-                }
-            }
-        }
+        # Store the server process and info
+        shared["mcp_server_process"] = exec_res.get("process")
+        shared["mcp_server_info"] = exec_res.get("server_info")
+        shared["mcp_server_cmd"] = exec_res.get("cmd")
         
-        shared['mcp_server_info'] = mcp_formatted
-        print(json.dumps(mcp_formatted, indent=2))
-        # Keep server running (do not return successor)
-        return None
+        return "default"
 
 class TutorialErrorHandler(Node):
     """Error handling node for the tutorial generation flow."""

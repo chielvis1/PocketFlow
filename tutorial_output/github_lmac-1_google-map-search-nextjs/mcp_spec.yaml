@@ -28,5 +28,5 @@ tools:
   name: get_chapter
   outputSchema:
     type: string
-transport: stdio
+transport: http
 version: 1.0.0

@@ -5,7 +5,14 @@ FROM python:3.10-alpine
 WORKDIR /app
 
 # Install minimal runtime dependencies for MCP server
-RUN pip install --no-cache-dir fastmcp pyyaml flask
+RUN pip install --no-cache-dir fastmcp pyyaml flask beautifulsoup4 requests
+
+# Copy enhanced MCP server files
+COPY enhanced_mcp_server.py /app/
+COPY utils/tutorial_mcp.py /app/utils/
+COPY utils/tutorial_mcp_advanced.py /app/utils/
+COPY utils/mcp.py /app/utils/
+COPY utils/monitoring.py /app/utils/
 
 # Define the tutorials directory as a volume
 VOLUME /tutorials
@@ -13,5 +20,26 @@ VOLUME /tutorials
 # Expose MCP server port
 EXPOSE 8000
 
-# Entry point: use TUTORIAL_NAME env var to locate and run the server script
-CMD ["sh", "-c", "if [ -z \"$TUTORIAL_NAME\" ]; then echo 'TUTORIAL_NAME not set'; exit 1; fi; python /tutorials/$TUTORIAL_NAME/simple_mcp_server.py"] 
+# Entry point: Add more debugging and use python3 with verbose error reporting
+CMD ["sh", "-c", "echo 'Starting container with TUTORIAL_NAME=$TUTORIAL_NAME'; \
+if [ -z \"$TUTORIAL_NAME\" ]; then \
+  echo 'ERROR: TUTORIAL_NAME environment variable not set'; \
+  exit 1; \
+fi; \
+echo 'Checking tutorial directory: /tutorials/$TUTORIAL_NAME'; \
+ls -la /tutorials/; \
+if [ -d \"/tutorials/$TUTORIAL_NAME\" ]; then \
+  echo 'Tutorial directory exists. Contents:'; \
+  ls -la /tutorials/$TUTORIAL_NAME; \
+  if [ -f \"/tutorials/$TUTORIAL_NAME/index.md\" ]; then \
+    echo 'index.md found'; \
+  else \
+    echo 'ERROR: index.md not found in /tutorials/$TUTORIAL_NAME'; \
+    exit 1; \
+  fi; \
+  echo 'Running enhanced MCP server...'; \
+  python3 -u /app/enhanced_mcp_server.py --tutorial-dir /tutorials/$TUTORIAL_NAME --debug; \
+else \
+  echo 'ERROR: Tutorial directory /tutorials/$TUTORIAL_NAME does not exist'; \
+  exit 1; \
+fi"] 
