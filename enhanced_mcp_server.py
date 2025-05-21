@@ -278,24 +278,34 @@ def main():
         
         # Start server
         logger.info(f"Starting tutorial MCP server on {args.host}:{args.port}")
-        server_info = start_tutorial_mcp_server(
-            str(tutorial_dir),
-            host=args.host,
-            port=args.port,
-            debug=args.debug
-        )
         
-        # Log server info
+        # Redirect stdout temporarily to prevent any output from start_tutorial_mcp_server
+        original_stdout = sys.stdout
+        sys.stdout = open(os.devnull, 'w')
+        
+        try:
+            server_info = start_tutorial_mcp_server(
+                str(tutorial_dir),
+                host=args.host,
+                port=args.port,
+                debug=args.debug
+            )
+        finally:
+            # Restore stdout
+            sys.stdout.close()
+            sys.stdout = original_stdout
+        
+        # Log server info but don't print to stdout
         logger.info(f"Server started: {server_info}")
         
         # Get tool descriptions
         tool_descriptions = get_tool_descriptions()
         
-        # Print JSON server info to stdout for container orchestration
-        server_json = {
-            "mcpServers": [
-                {
-                    "name": "tutorial_mcp_server",
+        # Create MCP config according to proper MCP JSON format
+        # mcpServers must be an object with server names as keys
+        mcp_config = {
+            "mcpServers": {
+                "tutorial_mcp_server": {
                     "transport": "http",
                     "host": args.host,
                     "port": args.port,
@@ -303,10 +313,13 @@ def main():
                     "tutorial_dir": str(tutorial_dir.absolute()),
                     "chapter_count": len(chapter_files)
                 }
-            ],
+            },
             "tools": tool_descriptions
         }
-        print(json.dumps(server_json, indent=2))
+        
+        # Print ONLY the JSON - no other text or markers
+        # This is critical for proper MCP integration
+        print(json.dumps(mcp_config, indent=2))
         
         # Keep the script running
         if server_info.get("status") == "running":

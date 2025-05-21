@@ -216,15 +216,61 @@ def run_repo_analysis_agent(args):
                         subprocess.run(["docker", "ps", "-a", "--filter", f"id={container_id}", "--format", "{{.ID}}\t{{.Status}}\t{{.Names}}"], check=False)
                         return
                     
+                    # Wait longer for the server to fully start and print JSON
+                    print("Waiting for server to fully initialize (10 seconds)...")
+                    time.sleep(10)
+                    
                     # If container is running, get logs
                     logs = subprocess.check_output(["docker", "logs", container_id], text=True)
-                    match = re.search(r'(\{.*\})', logs, re.DOTALL)
+                    match = re.search(r'=== BEGIN MCP SERVER JSON ===\s*([\s\S]*?)\s*=== END MCP SERVER JSON ===', logs, re.DOTALL)
                     if match:
                         print("\nMCP Server JSON details:")
-                        print(match.group(1))
+                        server_json_str = match.group(1)
+                        
+                        # Parse the JSON to extract and display server info and tools
+                        try:
+                            server_json = json.loads(server_json_str)
+                            
+                            # Print server information
+                            if "mcpServers" in server_json:
+                                print("\nServer Information:")
+                                print(json.dumps(server_json["mcpServers"], indent=2))
+                            
+                            # Print tools information
+                            if "tools" in server_json:
+                                print("\nAvailable Tools:")
+                                tools = server_json["tools"]
+                                print(f"Found {len(tools)} available tools:")
+                                
+                                for i, tool in enumerate(tools, 1):
+                                    print(f"\n{i}. {tool['name']}")
+                                    print(f"   Description: {tool['description']}")
+                                    
+                                    if tool['parameters']:
+                                        print(f"   Parameters: {json.dumps(tool['parameters'], indent=6)}")
+                                    else:
+                                        print(f"   Parameters: None")
+                                    
+                                    print(f"   Returns: {json.dumps(tool['returns'], indent=6)}")
+                            
+                            print("\nServer is running at http://localhost:8000")
+                            print("Press Ctrl+C to stop the server (container will be removed automatically)")
+                            
+                            # Keep the script running until user interrupts
+                            try:
+                                while True:
+                                    time.sleep(1)
+                            except KeyboardInterrupt:
+                                print("\nStopping container...")
+                                subprocess.run(["docker", "stop", container_id], check=False)
+                                print("Container stopped.")
+                        except json.JSONDecodeError as je:
+                            print(f"Error parsing JSON: {je}")
+                            print(f"Raw JSON string: {server_json_str[:200]}...")
                     else:
                         print("\nCould not find JSON details in container logs. Full logs:")
                         print(logs)
+                        print("\nServer may not have started correctly.")
                 except subprocess.CalledProcessError as e:
                     print(f"Error running Docker container: {e}")
                     print("Attempting to check container status...")
@@ -616,8 +662,8 @@ def run_tutorial_generation(args):
                         try:
                             logs = subprocess.check_output(["docker", "logs", container_id], text=True)
                             
-                            # Extract JSON details from logs
-                            match = re.search(r'(\{.*\})', logs, re.DOTALL)
+                            # Extract JSON details from logs with improved regex
+                            match = re.search(r'=== BEGIN MCP SERVER JSON ===\s*([\s\S]*?)\s*=== END MCP SERVER JSON ===', logs, re.DOTALL)
                             if match:
                                 print("\nMCP Server JSON details:")
                                 server_json_str = match.group(1)
@@ -650,18 +696,18 @@ def run_tutorial_generation(args):
                                     
                                     print("\nServer is running at http://localhost:8000")
                                     print("Press Ctrl+C to stop the server (container will be removed automatically)")
+                                    
+                                    # Keep the script running until user interrupts
+                                    try:
+                                        while True:
+                                            time.sleep(1)
+                                    except KeyboardInterrupt:
+                                        print("\nStopping container...")
+                                        subprocess.run(["docker", "stop", container_id], check=False)
+                                        print("Container stopped.")
                                 except json.JSONDecodeError as je:
                                     print(f"Error parsing JSON: {je}")
                                     print(f"Raw JSON string: {server_json_str[:200]}...")
-                                
-                                # Keep the script running until user interrupts
-                                try:
-                                    while True:
-                                        time.sleep(1)
-                                except KeyboardInterrupt:
-                                    print("\nStopping container...")
-                                    subprocess.run(["docker", "stop", container_id], check=False)
-                                    print("Container stopped.")
                             else:
                                 print("\nCould not find JSON details in container logs. Full logs:")
                                 print(logs)
@@ -670,7 +716,6 @@ def run_tutorial_generation(args):
                             print(f"Error getting container logs: {e}")
                             print("Attempting to check container status...")
                             subprocess.run(["docker", "ps", "-a", "--filter", f"id={container_id}"], check=False)
-                            
                     except subprocess.CalledProcessError as e:
                         print(f"Error in Docker operation: {e}")
                         print("Attempting to check Docker status...")
@@ -797,8 +842,8 @@ def main():
             try:
                 logs = subprocess.check_output(["docker", "logs", container_id], text=True)
                 
-                # Extract JSON details from logs
-                match = re.search(r'(\{.*\})', logs, re.DOTALL)
+                # Extract JSON details from logs with improved regex
+                match = re.search(r'=== BEGIN MCP SERVER JSON ===\s*([\s\S]*?)\s*=== END MCP SERVER JSON ===', logs, re.DOTALL)
                 if match:
                     print("\nMCP Server JSON details:")
                     server_json_str = match.group(1)
@@ -831,18 +876,18 @@ def main():
                         
                         print("\nServer is running at http://localhost:8000")
                         print("Press Ctrl+C to stop the server (container will be removed automatically)")
+                        
+                        # Keep the script running until user interrupts
+                        try:
+                            while True:
+                                time.sleep(1)
+                        except KeyboardInterrupt:
+                            print("\nStopping container...")
+                            subprocess.run(["docker", "stop", container_id], check=False)
+                            print("Container stopped.")
                     except json.JSONDecodeError as je:
                         print(f"Error parsing JSON: {je}")
                         print(f"Raw JSON string: {server_json_str[:200]}...")
-                    
-                    # Keep the script running until user interrupts
-                    try:
-                        while True:
-                            time.sleep(1)
-                    except KeyboardInterrupt:
-                        print("\nStopping container...")
-                        subprocess.run(["docker", "stop", container_id], check=False)
-                        print("Container stopped.")
                 else:
                     print("\nCould not find JSON details in container logs. Full logs:")
                     print(logs)
@@ -851,7 +896,6 @@ def main():
                 print(f"Error getting container logs: {e}")
                 print("Attempting to check container status...")
                 subprocess.run(["docker", "ps", "-a", "--filter", f"id={container_id}"], check=False)
-                
         except subprocess.CalledProcessError as e:
             print(f"Error in Docker operation: {e}")
             print("Attempting to check Docker status...")
